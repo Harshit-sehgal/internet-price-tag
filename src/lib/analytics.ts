@@ -9,6 +9,7 @@ export type AnalyticsEvent =
   | "login_completed"
   | "quote_created"
   | "checkout_started"
+  | "checkout_blocked_bot"
   | "payment_succeeded"
   | "payment_failed"
   | "payment_refunded"
@@ -19,7 +20,7 @@ export type AnalyticsEvent =
 
 const EVENTS: readonly AnalyticsEvent[] = [
   "homepage_viewed", "domain_searched", "domain_opened", "claim_clicked", "takeover_clicked",
-  "login_started", "login_completed", "quote_created", "checkout_started", "payment_succeeded",
+  "login_started", "login_completed", "quote_created", "checkout_started", "checkout_blocked_bot", "payment_succeeded",
   "payment_failed", "payment_refunded", "takeover_succeeded", "share_clicked", "share_copied",
   "share_visit",
 ];

@@ -1,20 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
+
+// Public site key (safe for the browser). Empty/undefined = Turnstile disabled.
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+type TurnstileApi = {
+  render: (el: HTMLElement, opts: Record<string, unknown>) => string;
+  reset: (widgetId?: string) => void;
+  remove: (widgetId: string) => void;
+};
+
+function loadTurnstileScript(): Promise<TurnstileApi | null> {
+  return new Promise((resolve) => {
+    const w = window as unknown as { turnstile?: TurnstileApi; onTurnstileLoad?: () => void };
+    if (w.turnstile) return resolve(w.turnstile);
+    w.onTurnstileLoad = () => resolve(w.turnstile ?? null);
+    if (!document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
+      const s = document.createElement("script");
+      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad";
+      s.async = true;
+      s.defer = true;
+      document.head.appendChild(s);
+    }
+    // Never block checkout forever on a blocked script; the server-side check
+    // still protects the endpoint, and the user can retry.
+    setTimeout(() => resolve(w.turnstile ?? null), 8_000);
+  });
+}
 
 export function CheckoutButton({ quoteId }: { quoteId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const widgetRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+  const tokenRef = useRef<string | null>(null);
+
+  // Render the invisible widget when Turnstile is configured.
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) return;
+    let removed = false;
+    void loadTurnstileScript().then((ts) => {
+      if (!ts || removed || !widgetRef.current || widgetIdRef.current !== null) return;
+      widgetIdRef.current = ts.render(widgetRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        size: "invisible",
+        callback: (token: string) => {
+          tokenRef.current = token;
+        },
+        "error-callback": () => {
+          tokenRef.current = null;
+        },
+      });
+    });
+    return () => {
+      removed = true;
+      const ts = (window as unknown as { turnstile?: TurnstileApi }).turnstile;
+      if (ts && widgetIdRef.current !== null) {
+        try { ts.remove(widgetIdRef.current); } catch { /* already gone */ }
+        widgetIdRef.current = null;
+      }
+    };
+  }, []);
 
   async function checkout() {
     setBusy(true);
     setError(null);
     try {
+      let token: string | null = tokenRef.current;
+      if (TURNSTILE_SITE_KEY && !token) {
+        const ts = (window as unknown as { turnstile?: TurnstileApi }).turnstile;
+        token = await new Promise<string | null>((resolve) => {
+          if (!ts) return resolve(null);
+          const original = tokenRef.current;
+          const started = Date.now();
+          const poll = setInterval(() => {
+            if (tokenRef.current && tokenRef.current !== original) {
+              clearInterval(poll);
+              resolve(tokenRef.current);
+            } else if (Date.now() - started > 8_000) {
+              clearInterval(poll);
+              resolve(null);
+            }
+          }, 150);
+        });
+        if (ts && widgetIdRef.current !== null) ts.reset(widgetIdRef.current);
+      }
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ quoteId }),
+        body: JSON.stringify({ quoteId, turnstileToken: token }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? `checkout failed (${res.status})`);
@@ -30,6 +106,7 @@ export function CheckoutButton({ quoteId }: { quoteId: string }) {
 
   return (
     <div className="stack" style={{ gap: "var(--space-2)" }}>
+      {TURNSTILE_SITE_KEY ? <div ref={widgetRef} aria-hidden="true" /> : null}
       <button className="btn btn-take btn-block" onClick={checkout} disabled={busy}>
         {busy ? "Opening checkout…" : "Continue to payment"}
       </button>

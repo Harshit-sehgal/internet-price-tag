@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getQuote, markQuoteStatus } from "@/lib/repo";
 import { getViewer, demoViewer } from "@/lib/auth";
 import { getPaymentProvider } from "@/lib/payments";
+import { verifyTurnstile } from "@/lib/turnstile";
 import { rateLimit } from "@/lib/ratelimit";
 import { track } from "@/lib/analytics";
 
@@ -37,13 +38,22 @@ export async function POST(req: Request) {
   }
 
   let quoteId: string | undefined;
+  let turnstileToken: unknown;
   try {
-    const body = (await req.json()) as { quoteId?: string };
+    const body = (await req.json()) as { quoteId?: string; turnstileToken?: unknown };
     quoteId = body.quoteId;
+    turnstileToken = body.turnstileToken;
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
   if (!quoteId) return NextResponse.json({ error: "quoteId_required" }, { status: 400 });
+
+  // Bot protection (§45): fail closed when Turnstile is configured.
+  const turnstile = await verifyTurnstile(turnstileToken, ip === "unknown" ? null : ip);
+  if (!turnstile.ok) {
+    track("checkout_blocked_bot", { reason: turnstile.reason });
+    return NextResponse.json({ error: "bot_check_failed", detail: turnstile.reason }, { status: 403 });
+  }
 
   const quote = await getQuote(quoteId);
   if (!quote) return NextResponse.json({ error: "unknown_quote" }, { status: 404 });

@@ -34,7 +34,8 @@ repo. 🔒 = owner-gated, no code remaining. Detailed steps: [DEPLOY.md](./DEPLO
 - ✅ User suspension enforced at quote creation, checkout and finalization
 - ✅ Security review done: webhook signature + replay, CSRF content-type guards,
   open-redirect guard, RLS lockdown (clients read-only), no service keys client-side
-- 🔴 Basic bot protection (e.g. Cloudflare Turnstile) — recommend before announcement
+- ✅ Basic bot protection: optional Cloudflare Turnstile (invisible) on checkout —
+  server fail-closed when configured, pass-through in demo/CI; unit-tested
 - 🔒 Payment-provider fraud tooling enabled in the Stripe dashboard (owner)
 
 ## Trust
