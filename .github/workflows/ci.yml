@@ -49,6 +49,16 @@ jobs:
           NEXT_TELEMETRY_DISABLED: 1
 
       - name: Concurrency race test over live HTTP (§74)
-        run: npm run test:race
+        run: |
+          npx next start -p 3111 &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3111/api/market/pulse > /dev/null; then break; fi
+            sleep 1
+          done
+          node tests/load/race.mjs http://127.0.0.1:3111 12
+          STATUS=$?
+          kill $SERVER_PID
+          exit $STATUS
         env:
           NEXT_TELEMETRY_DISABLED: 1
