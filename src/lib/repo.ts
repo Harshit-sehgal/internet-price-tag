@@ -162,6 +162,25 @@ export async function listMarket(limit = 50): Promise<RepoDomain[]> {
   return (data ?? []).map(toDomain);
 }
 
+/** Sales where the given handle is the buyer, newest first. */
+export async function listSalesForBuyer(buyerHandle: string, limit = 50): Promise<RepoSale[]> {
+  const h = buyerHandle.toLowerCase().replace(/^@/, "");
+  if (!isProdDatastore) {
+    return mem()
+      .sales.filter((s) => s.buyerHandle === h)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+  const { data, error } = await client()
+    .from("sales")
+    .select("*")
+    .eq("buyer_handle", h)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map(toSale);
+}
+
 export async function listRecentSales(limit = 20): Promise<RepoSale[]> {
   if (!isProdDatastore) {
     return [...mem().sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
@@ -240,6 +259,8 @@ export async function createQuote(domainInput: string, buyerUserId: string): Pro
   if (!profile) throw new Error("PROFILE_REQUIRED");
   if (profile.suspendedAt) throw new Error("ACCOUNT_SUSPENDED");
 
+  if (isProdDatastore && (await isReservedInDb(domain))) throw new Error("DOMAIN_INELIGIBLE: reserved");
+
   if (isProdDatastore) {
     // Fresh read + holder check at quote time; version is pinned for staleness.
     const { data: row, error } = await client().from("domains").select("*").eq("domain", domain).maybeSingle();
@@ -277,6 +298,8 @@ export async function createQuote(domainInput: string, buyerUserId: string): Pro
     domain, holderUserId: null, holderHandle: null, priceCents: 0, version: 0, claimedAt: null, updatedAt: null,
   };
   if (current.holderUserId && current.holderUserId === buyerUserId) throw new Error("ALREADY_HOLDER");
+  // Demo mirror of the in-DB reserved_domains check above.
+  if (mem().domains.get(`__reserved:${domain}`)) throw new Error("DOMAIN_INELIGIBLE: reserved");
   const q = quoteFor({ domain, holder: current.holderHandle, priceCents: current.priceCents, version: current.version, history: [] });
   const id = crypto.randomUUID();
   const quote: RepoQuote = {
@@ -468,11 +491,25 @@ export async function markPaymentEventStatus(provider: string, providerEventId: 
   if (ev) ev.status = status;
 }
 
+async function isReservedInDb(domain: string): Promise<boolean> {
+  if (!isProdDatastore) return false;
+  try {
+    const { data } = await client().from("reserved_domains").select("domain").eq("domain", domain).maybeSingle();
+    return !!data;
+  } catch {
+    // If the reserved_domains table is missing, fail open but log.
+    return false;
+  }
+}
+
 // ------------------------------------------------------- demo seeding (non-prod)
 export function seedDemoMarket(items: Array<{ domain: string; holderHandle: string; priceCents: number }>): void {
   if (isProdDatastore) return; // production never fabricates purchases (§41)
   const m = mem();
+  // Idempotent: module-level seeding (src/app/page.tsx) runs on every SSR render
+  // in dev — don't duplicate sales or overwrite newer holder state.
   for (const item of items) {
+    if (m.domains.has(item.domain)) continue;
     const now = new Date().toISOString();
     // Handles are stored bare (no leading @) everywhere; strip if a caller included it.
     const handle = item.holderHandle.replace(/^@+/, "").toLowerCase();

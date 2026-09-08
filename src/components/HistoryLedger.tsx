@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { money } from "@/lib/game.ts";
 import type { RepoSale } from "@/lib/repo";
 
@@ -13,7 +14,7 @@ export function HistoryLedger({ sales }: { sales: RepoSale[] }) {
     <div className="ledger">
       {sales.map((s) => (
         <div key={s.id} className="ledger-row">
-          <span className="who">@{s.buyerHandle}</span>
+          <Link className="who" href={`/u/${s.buyerHandle}`}>@{s.buyerHandle}</Link>
           <span className="when">{shortDate(s.createdAt)}</span>
           <span className="amount money">{money(s.priceCents)}</span>
         </div>

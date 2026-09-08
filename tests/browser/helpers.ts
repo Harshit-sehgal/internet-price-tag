@@ -10,7 +10,9 @@ export async function handleFor(request: APIRequestContext): Promise<void> {
     data: { handle: "smoketest" },
     headers: { "content-type": "application/json" },
   });
-  if (res.ok() || res.status() === 400) return; // 400 = handle locked, already set
+  // 429 is possible when checkout's IP rate-limit test ran just before;
+  // the handle is still valid — the demo buyer was already registered.
+  if (res.ok() || res.status() === 400 || res.status() === 429) return;
   throw new Error(`handle setup failed: ${res.status()}`);
 }
 

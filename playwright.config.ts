@@ -10,6 +10,9 @@ export default defineConfig({
   testDir: "./tests/browser",
   timeout: 30_000,
   expect: { timeout: 7_000 },
+  // Two browser projects hit the same demo in-memory store, so run
+  // serially to keep handle/quote counts deterministic.
+  workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "line" : "list",

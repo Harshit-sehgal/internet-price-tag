@@ -24,7 +24,8 @@ export async function POST(req: Request) {
   }
   if (!user) return NextResponse.json({ error: "login_required" }, { status: 401 });
 
-  const rl = rateLimit(`checkout:${user.id}`, 6, 60_000);
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rl = rateLimit(`checkout:${user.id}`, 6, 60_000) && rateLimit(`checkout:ip:${ip}`, 12, 60_000);
   if (!rl) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
 
   let quoteId: string | undefined;
@@ -47,6 +48,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "quote_expired" }, { status: 409 });
   }
 
+  const { getProfileById } = await import("@/lib/repo");
+  const profile = await getProfileById(user.id);
+  // Webhook still resolves the canonical handle from the DB; this is only for
+  // provider-runner metadata and should never be a raw user id when possible.
+  const checkoutHandle = profile?.handle ?? `user_${user.id.slice(0, 8)}`;
+
   const provider = getPaymentProvider();
   const base = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
   try {
@@ -54,7 +61,7 @@ export async function POST(req: Request) {
       quoteId: quote.id,
       domain: quote.domain,
       buyerUserId: user.id,
-      buyerHandle: user.id, // replaced by webhook-side profile lookup; metadata kept minimal
+      buyerHandle: checkoutHandle,
       amountCents: quote.nextPriceCents,
       successUrl: `${base}/checkout/return?quote_id=${quote.id}`,
       cancelUrl: `${base}/domain/${quote.domain}?checkout=cancelled`,

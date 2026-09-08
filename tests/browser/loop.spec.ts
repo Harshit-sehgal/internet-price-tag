@@ -63,6 +63,32 @@ test.describe("full takeover loop (demo mode)", () => {
   });
 });
 
+test.describe("holder profiles (/u/[handle])", () => {
+  test("profile shows current holdings and takeover history after a claim", async ({ page }) => {
+    const domain = uniqueDomain();
+    await handleFor(page.request);
+
+    await page.goto(`/domain/${domain}`);
+    await page.getByRole("button", { name: /Claim for \$5/ }).click();
+    await page.getByRole("button", { name: "Continue to payment" }).click();
+    await page.getByRole("button", { name: "Pay (succeed)" }).click();
+    await expect(page).toHaveURL(/\/success\//, { timeout: 10_000 });
+
+    await page.goto("/u/smoketest");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("@smoketest");
+    // Both projects run concurrently, so the count may include the other's claim.
+    await expect(page.getByText(/Currently holds \d+ tags?/)).toBeVisible();
+    // Domain appears in both the holdings and history lists.
+    await expect(page.getByRole("link", { name: domain }).first()).toBeVisible();
+    await expect(page.getByText("first claim").first()).toBeVisible();
+  });
+
+  test("unknown handle shows the empty state", async ({ page }) => {
+    await page.goto("/u/latentspace");
+    await expect(page.getByText("holds nothing yet")).toBeVisible();
+  });
+});
+
 test.describe("mobile viewport (§32)", () => {
   test("domain page surfaces holder, price and CTA without hunting", async ({ page }) => {
     // Runs in the Pixel 7 project; the desktop project also exercises this page.

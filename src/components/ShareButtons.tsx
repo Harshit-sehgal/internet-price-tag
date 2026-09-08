@@ -8,7 +8,8 @@ export function ShareButtons({ domain, priceCents, handle, saleId }: { domain: s
   const [copied, setCopied] = useState<"post" | "link" | null>(null);
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
-  const shareUrl = `${appUrl}/success/${saleId}`;
+  const baseShareUrl = `${appUrl}/success/${saleId}`;
+  const shareUrl = `${baseShareUrl}${baseShareUrl.includes("?") ? "&" : "?"}via=share`;
   const post = `I just took ${domain} for ${money(priceCents)} on The Internet Price Tag.\n\nnot the actual domain lol`;
 
   function shareOnX() {

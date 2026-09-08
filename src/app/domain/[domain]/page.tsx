@@ -29,6 +29,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     return {
       title: `${canonical} is unclaimed — $5 first claim`,
       description: `Nobody holds ${canonical}'s symbolic Internet Price Tag yet. First claim costs $5.`,
+      // Empty generated pages stay out of the index (§38).
+      robots: { index: false, follow: true },
     };
   }
   return {
@@ -93,10 +95,10 @@ export default async function DomainPage({ params }: Params) {
             <div className="row-split">
               <div className="stack" style={{ gap: "var(--space-1)" }}>
                 <span className="eyebrow">Current holder</span>
-                <span className="holder-chip">
+                <Link href={`/u/${row?.holderHandle}`} className="holder-chip" style={{ textDecoration: "none" }}>
                   <span className="holder-dot" />
                   @{row?.holderHandle}
-                </span>
+                </Link>
               </div>
               <div className="stack" style={{ gap: "var(--space-1)", textAlign: "right" }}>
                 <span className="eyebrow">Current price</span>

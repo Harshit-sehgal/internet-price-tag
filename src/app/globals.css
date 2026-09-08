@@ -130,6 +130,24 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---------- market table ---------- */
 .market-table { border-top: 2px solid var(--rule); }
+
+/* Holder profile lists (/u/[handle]) — same ledger language as the market. */
+.holding-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 2px solid var(--rule);
+}
+.holding-list li {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.holding-list a {
+  text-decoration: none;
+}
+.holding-list a:hover {
+  text-decoration: underline;
+}
 .market-row {
   display: grid;
   grid-template-columns: 44px minmax(0, 1.2fr) minmax(0, 1fr) auto auto auto;

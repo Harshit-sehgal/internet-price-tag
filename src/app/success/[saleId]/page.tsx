@@ -36,9 +36,18 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-export default async function SuccessPage({ params }: Params) {
+export default async function SuccessPage({ params, searchParams }: Params & { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const { saleId } = await params;
   const data = await load(saleId);
+  // Share attribution (§36): inbound visitors that arrived via a /success share link
+  // set ?via=share on the URL; count that funnel entry.
+  if (data && searchParams) {
+    const sp = await searchParams;
+    if (sp.via === "share" || sp.via === "x") {
+      const { track } = await import("@/lib/analytics");
+      track("share_visit", { saleId, via: String(sp.via) });
+    }
+  }
 
   if (!data) {
     return (
