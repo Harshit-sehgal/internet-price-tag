@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { evaluateDomain } from "@/lib/domains.ts";
 import { money, quoteFor } from "@/lib/game.ts";
-import { getDomain, listSalesForDomain, type RepoDomain } from "@/lib/repo";
+import { getDomain, isDomainReserved, listSalesForDomain, type RepoDomain } from "@/lib/repo";
 import { TakeoverCTA } from "@/components/TakeoverCTA";
 import { HistoryLedger } from "@/components/HistoryLedger";
 import { LiveRefresh } from "@/components/LiveRefresh";
@@ -12,6 +11,7 @@ export const dynamic = "force-dynamic";
 type Params = { params: Promise<{ domain: string }> };
 
 async function loadDomain(raw: string): Promise<{ canonical: string | null; reason: string; row: RepoDomain | null; sales: Awaited<ReturnType<typeof listSalesForDomain>> }> {
+  const { evaluateDomain } = await import("@/lib/domains.ts");
   const evalResult = evaluateDomain(decodeURIComponent(raw));
   if (!evalResult.eligible || !evalResult.canonicalDomain) {
     // Reserved domains have a canonical form but are ineligible — surface them
@@ -21,9 +21,15 @@ async function loadDomain(raw: string): Promise<{ canonical: string | null; reas
     }
     return { canonical: null, reason: evalResult.reason, row: null, sales: [] };
   }
-  const row = await getDomain(evalResult.canonicalDomain);
-  const sales = await listSalesForDomain(evalResult.canonicalDomain, 30);
-  return { canonical: evalResult.canonicalDomain, reason: evalResult.reason, row, sales };
+  const canonical = evalResult.canonicalDomain;
+  // DB-backed reserved check: domains in reserved_domains with a live row must
+  // also surface as unavailable (no CTA, noindex). Keep the domain lookup
+  // conditional so unclaimed/non-reserved paths pay no extra cost.
+  const reservedInDb = await isDomainReserved(canonical);
+  if (reservedInDb) return { canonical, reason: "reserved", row: null, sales: [] };
+  const row = await getDomain(canonical);
+  const sales = await listSalesForDomain(canonical, 30);
+  return { canonical, reason: evalResult.reason, row, sales };
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {

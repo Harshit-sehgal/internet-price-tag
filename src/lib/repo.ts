@@ -535,7 +535,7 @@ export async function markPaymentEventStatus(provider: string, providerEventId: 
   if (ev) ev.status = status;
 }
 
-async function isReservedInDb(domain: string): Promise<boolean> {
+export async function isReservedInDb(domain: string): Promise<boolean> {
   if (!isProdDatastore) return false;
   try {
     const { data } = await client().from("reserved_domains").select("domain").eq("domain", domain).maybeSingle();
@@ -544,6 +544,13 @@ async function isReservedInDb(domain: string): Promise<boolean> {
     // If the reserved_domains table is missing, fail open but log.
     return false;
   }
+}
+
+export async function isDomainReserved(domain: string): Promise<boolean> {
+  // Static blocklist (always) + operator-managed DB blocklist (prod).
+  const { evaluateDomain } = await import("./domains.ts");
+  if (evaluateDomain(domain).reason === "reserved") return true;
+  return isReservedInDb(domain);
 }
 
 // ------------------------------------------------------- demo seeding (non-prod)
