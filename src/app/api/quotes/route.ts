@@ -1,0 +1,56 @@
+import { NextResponse } from "next/server";
+import { createQuote } from "@/lib/repo";
+import { getViewer, demoViewer } from "@/lib/auth";
+import { rateLimit } from "@/lib/ratelimit";
+import { track } from "@/lib/analytics";
+
+export async function POST(req: Request) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+
+  let user;
+  try {
+    ({ user } = await getViewer());
+    // Demo mode: unauthenticated local visitors act as the demo buyer.
+    if (!user) {
+      const { isAuthConfigured } = await import("@/lib/auth");
+      if (!isAuthConfigured) user = demoViewer().user;
+    }
+  } catch {
+    return NextResponse.json({ error: "auth unavailable" }, { status: 500 });
+  }
+
+  if (!user) return NextResponse.json({ error: "login_required" }, { status: 401 });
+
+  const rl = rateLimit(`quote:${user.id}`, 10, 60_000) && rateLimit(`quote:ip:${ip}`, 20, 60_000);
+  if (!rl) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+
+  let domain: string | undefined;
+  try {
+    const body = (await req.json()) as { domain?: string };
+    domain = body.domain;
+  } catch {
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+  }
+  if (!domain) return NextResponse.json({ error: "domain_required" }, { status: 400 });
+
+  try {
+    const quote = await createQuote(domain, user.id);
+    track("quote_created", { domain: quote.domain, next_price_cents: quote.nextPriceCents });
+    return NextResponse.json({ quoteId: quote.id, nextPriceCents: quote.nextPriceCents });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "PROFILE_REQUIRED" || msg.startsWith("PROFILE")) {
+      return NextResponse.json({ code: "NO_HANDLE", error: "handle_required" }, { status: 409 });
+    }
+    if (msg === "ALREADY_HOLDER") {
+      return NextResponse.json({ code: "ALREADY_HOLDER", error: "you already hold this tag" }, { status: 409 });
+    }
+    if (msg.startsWith("DOMAIN_INELIGIBLE")) {
+      return NextResponse.json({ code: "INELIGIBLE", error: msg }, { status: 422 });
+    }
+    if (msg === "ACCOUNT_SUSPENDED") {
+      return NextResponse.json({ code: "SUSPENDED", error: "account suspended" }, { status: 403 });
+    }
+    return NextResponse.json({ error: "quote_failed" }, { status: 500 });
+  }
+}
