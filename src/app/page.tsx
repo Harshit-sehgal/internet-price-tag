@@ -1,4 +1,4 @@
-import { listMarket, listRecentSales, marketValueCents, seedDemoMarket, isProdDatastore } from "@/lib/repo";
+import { listMarket, listRecentSales, marketValueCents, seedDemoMarket } from "@/lib/repo";
 import { money } from "@/lib/game.ts";
 import { SearchBar } from "@/components/SearchBar";
 import { MarketTable } from "@/components/MarketTable";

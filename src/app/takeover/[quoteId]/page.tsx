@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { money } from "@/lib/game.ts";
 import { getQuote } from "@/lib/repo";
+import { nowMs } from "@/lib/time.ts";
 import { CheckoutButton } from "@/components/CheckoutButton";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +41,7 @@ export default async function TakeoverPage({ params }: Params) {
     );
   }
 
-  const expired = new Date(quote.expiresAt).getTime() < Date.now();
+  const expired = new Date(quote.expiresAt).getTime() < nowMs();
   if (expired) {
     return (
       <div className="stack">

@@ -1,17 +1,17 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { track } from "@/lib/analytics";
 
 function LoginInner() {
-  const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/";
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/mode")
@@ -49,8 +49,6 @@ function LoginInner() {
     }
     setSent(true);
   }
-
-  const [error, setError] = useState<string | null>(null);
 
   if (sent) {
     return (

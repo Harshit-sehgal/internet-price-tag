@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { money } from "@/lib/game.ts";
 
 /**
@@ -9,7 +9,12 @@ import { money } from "@/lib/game.ts";
  * path: a signed webhook payload is POSTed to /api/webhooks/payments, which
  * verifies the signature and finalizes the takeover atomically.
  */
+function newDemoEventId(): string {
+  return `demo_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function MockCheckoutInner() {
+  const router = useRouter();
   const params = useSearchParams();
   const quoteId = params.get("quote_id") ?? "";
   const domain = params.get("domain") ?? "";
@@ -19,7 +24,7 @@ function MockCheckoutInner() {
 
   async function pay(result: "success" | "failure") {
     setState("paying");
-    const eventId = `demo_evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const eventId = newDemoEventId();
     const payload = JSON.stringify({
       id: eventId,
       type: result === "success" ? "payment_intent.succeeded" : "payment_intent.payment_failed",
@@ -44,7 +49,7 @@ function MockCheckoutInner() {
     }
     if (body?.result?.saleId) {
       setState("done");
-      window.location.assign(`/success/${body.result.saleId}`);
+      router.push(`/success/${body.result.saleId}`);
       return;
     }
     setState("error");

@@ -2,7 +2,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { type SupabaseClient } from "@supabase/supabase-js";
 import { getProfileById, getProfileByHandle, upsertProfile, type RepoProfile } from "./repo.ts";
 import { isHandleAllowed } from "./domains.ts";
 

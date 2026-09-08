@@ -28,7 +28,11 @@ The challenger pays the **full next price**, not only the increment. Money is st
 
 ## Repository status
 
-The previous UI direction has been rejected. **The frontend is to be redesigned from scratch.** Do not use the old prototype as a visual reference and do not incrementally polish it.
+The previous UI direction has been rejected and **has been replaced**. The current app is a ledger-style "Internet Exchange" design built from scratch (off-white paper, hard rules, tabular numerals, no SaaS cards/gradients).
+
+**Implemented (V1 core):** market homepage with search and activity feed, domain pages with price-transparency math and history, server-authoritative quotes (5-minute TTL), versioned atomic takeovers, Supabase auth with public handles, payment-provider abstraction with Stripe and a signed-demo provider, idempotent webhooks, stale-quote auto-refund path, success receipt with X share and dynamic OG images, legal pages, rate limiting, analytics wrapper, operator SQL, and a concurrency test suite.
+
+**Not yet done before real-money launch:** configure live Supabase + Stripe credentials and apply `db/schema*.sql`, deploy, sandbox payment QA, professional legal review, and monitoring/alerting (§56).
 
 The reusable foundation is:
 
@@ -47,16 +51,18 @@ Read **[PROJECT_BLUEPRINT.md](./PROJECT_BLUEPRINT.md)** before changing the prod
 Also see:
 
 - [MARKET_RULES.md](./MARKET_RULES.md) — exact market mechanics
-- [db/schema.sql](./db/schema.sql) — Postgres/Supabase market core
+- [db/schema.sql](./db/schema.sql) + [db/schema-extended.sql](./db/schema-extended.sql) — Postgres/Supabase market core, RLS, atomic takeover RPC
+- [db/ops.sql](./db/ops.sql) — operator moderation tooling
 - [src/lib/game.ts](./src/lib/game.ts) — deterministic market engine
 - [src/lib/game.test.ts](./src/lib/game.test.ts) — market-rule tests
+- [tests/integration/concurrency.test.ts](./tests/integration/concurrency.test.ts) — race-condition suite
 
 ## Technical direction
 
-- Next.js + TypeScript
-- Postgres / Supabase
+- Next.js (App Router) + TypeScript, Server Components by default
+- Postgres / Supabase (auth, data, optional realtime)
 - server-authoritative quotes and takeovers
-- Stripe or Polar for payments — final provider still open
+- payment-provider abstraction; Stripe behind it (demo provider included)
 - Vercel deployment
 - realtime market updates
 - dynamic Open Graph/share cards
@@ -64,8 +70,13 @@ Also see:
 ## Foundation checks
 
 ```bash
-npm run test:market
+npm install
+npm run test        # market rules + concurrency suite
 npm run typecheck
+npm run lint
+npm run build
 ```
+
+The app runs with no credentials in demo mode (in-memory market + simulated payments). For production, copy `.env.example`, configure Supabase (auth + Postgres) and a Stripe account, and apply `db/schema.sql` then `db/schema-extended.sql`.
 
 The market is a game/status product, **not an investment or domain-ownership product**. Never describe a holder as owning the underlying domain without an immediate explicit disclaimer.
