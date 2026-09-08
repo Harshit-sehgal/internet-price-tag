@@ -35,7 +35,18 @@ function MockCheckoutInner() {
         amount_cents: String(amountCents),
       },
     });
-    const sig = await signPayload(payload);
+    const sigRes = await fetch("/api/demo/sign", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ payload }),
+    });
+    const sigBody = (await sigRes.json().catch(() => ({}))) as { signature?: string };
+    const sig = sigBody?.signature ?? "";
+    if (!sig) {
+      setState("error");
+      setMessage("Could not sign the demo webhook. Try again.");
+      return;
+    }
     const res = await fetch("/api/webhooks/payments", {
       method: "POST",
       headers: { "content-type": "application/json", "x-demo-signature": sig },
@@ -58,19 +69,6 @@ function MockCheckoutInner() {
         ? "Someone took this tag before your payment completed. A refund was issued automatically."
         : body?.result?.reason ?? "Webhook processing failed.",
     );
-  }
-
-  async function signPayload(payload: string): Promise<string> {
-    const enc = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      "raw",
-      enc.encode("demo-webhook-secret"),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"],
-    );
-    const mac = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-    return Array.from(new Uint8Array(mac)).map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
   if (!quoteId) {

@@ -30,12 +30,23 @@ export function TakeoverCTA({ domain, priceCents, kind, expectedVersion }: Props
         router.push(`/login?next=${encodeURIComponent(`/domain/${domain}`)}`);
         return;
       }
-      if (res.status === 409 && (await res.json()).code === "NO_HANDLE") {
-        router.push(`/welcome?next=${encodeURIComponent(`/domain/${domain}`)}`);
-        return;
+      if (res.status === 409) {
+        const body = (await res.clone().json().catch(() => ({}))) as {
+          code?: string;
+          error?: string;
+        };
+        const code = body.code;
+        if (code === "NO_HANDLE" || code === "PROFILE_REQUIRED") {
+          router.push(`/welcome?next=${encodeURIComponent(`/domain/${domain}`)}`);
+          return;
+        }
+        if (code === "SUSPENDED") throw new Error("Your account is suspended and cannot take tags.");
+        if (code === "ALREADY_HOLDER") throw new Error("You already hold this tag.");
+        if (code === "INELIGIBLE") throw new Error("This domain cannot be claimed.");
+        throw new Error(body.error ?? body.code ?? "quote failed");
       }
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `quote failed (${res.status})`);
       }
       const { quoteId } = (await res.json()) as { quoteId: string };

@@ -11,15 +11,18 @@ export function SearchBar({ compact = false }: { compact?: boolean }) {
     e.preventDefault();
     const cleaned = value.trim().toLowerCase();
     if (!cleaned) return;
-    // Server normalizes again; this only makes the URL pleasant. Strip
-    // scheme, path/query/fragment and a leading www. to match it.
-    const slug = encodeURIComponent(
-      cleaned
-        .replace(/^https?:\/\//, "")
-        .split(/[/?#]/)[0]
-        .replace(/^www\./, ""),
-    );
-    router.push(`/domain/${slug}`);
+    // Mirror the server normalizer enough for pleasant URLs: scheme →
+    // userinfo? ignore, then path/query/fragment → host, strip leading
+    // www. and any :port, then trim trailing dots. Server re-normalizes
+    // definitively, so this only needs to avoid obvious mismatches.
+    let host = cleaned.replace(/^[a-z][a-z0-9+.-]*:\/\//, "");
+    host = host.split("@").pop() ?? host;
+    host = host.split(/[/?#]/)[0] ?? host;
+    host = host.replace(/:\d{1,5}$/, "");
+    host = host.replace(/^www\./, "");
+    host = host.replace(/\.+$/, "");
+    if (!host) return;
+    router.push(`/domain/${encodeURIComponent(host)}`);
   }
 
   return (

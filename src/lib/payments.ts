@@ -183,7 +183,7 @@ class StripeProvider implements PaymentProvider {
 }
 
 function verifyStripeWebhookSync(payload: string, signature: string, secret: string): WebhookVerification {
-  // Minimal Stripe signature verification: t=timestamp,v1=hmac(sha256,secret,"t.payload")
+  // Stripe sends "t=<unix>,v1=<hex>"; verify HMAC of "t.payload".
   const parts = Object.fromEntries(signature.split(",").map((kv) => kv.split("=") as [string, string]));
   const timestamp = parts["t"];
   const v1 = parts["v1"];
@@ -199,25 +199,59 @@ function verifyStripeWebhookSync(payload: string, signature: string, secret: str
     const body = JSON.parse(payload) as {
       id: string;
       type: string;
-      data: { object: { id: string; metadata?: Record<string, string>; payment_intent?: string; amount_total?: number; status?: string } };
+      data: { object: Record<string, unknown> };
     };
-    const obj = body.data.object;
-    const succeeded = body.type === "checkout.session.completed" && obj.status === "complete";
-    const status: ProviderEvent["status"] = body.type.includes("refunded")
+    const obj = body.data.object as {
+      id?: string;
+      object?: string;
+      status?: string;
+      payment_status?: string;
+      payment_intent?: string;
+      amount?: number;
+      amount_total?: number;
+      metadata?: Record<string, string>;
+    };
+    const type = body.type;
+
+    // Stripe recommends listening to `checkout.session.completed` for Checkout
+    // and/or `payment_intent.succeeded|payment_failed` for PaymentIntents.
+    // We accept both so DEPLOY.md's webhook setup works without extra steps.
+    const isCheckoutComplete =
+      type === "checkout.session.completed" && (obj.status === "complete" || obj.payment_status === "paid");
+    const isPiSucceeded = type === "payment_intent.succeeded";
+    const isFailed = type === "payment_intent.payment_failed" || type.includes("failed");
+    const isRefunded = type.includes("refunded");
+
+    const status: ProviderEvent["status"] = isRefunded
       ? "refunded"
-      : body.type.includes("failed")
+      : isFailed
         ? "failed"
-        : succeeded
+        : isCheckoutComplete || isPiSucceeded
           ? "succeeded"
           : "other";
+
+    // Payment identifier: prefer the PaymentIntent id; fall back to session/charge id.
+    const paymentId = (obj.payment_intent as string | undefined) ?? (obj.id as string | undefined) ?? "";
+    if (!paymentId) return { ok: false, reason: "missing_payment_id" };
+
+    // Amount: metadata is authoritative for our quotes; Stripe's totals are fallback.
+    const metaCents = obj.metadata?.amount_cents ? Number(obj.metadata.amount_cents) : null;
+    const stripeAmount =
+      typeof obj.amount_total === "number"
+        ? obj.amount_total
+        : typeof obj.amount === "number"
+          ? obj.amount
+          : null;
+    const amountCents = Number.isFinite(metaCents) && (metaCents as number) > 0 ? (metaCents as number) : stripeAmount;
+
     return {
       ok: true,
       event: {
         id: body.id,
-        type: body.type,
-        paymentId: obj.payment_intent ?? obj.id,
+        type,
+        paymentId,
         quoteId: obj.metadata?.quote_id ?? null,
-        amountCents: obj.metadata?.amount_cents ? Number(obj.metadata.amount_cents) : (obj.amount_total ?? null),
+        amountCents: amountCents ?? null,
         status,
       },
     };
