@@ -7,6 +7,12 @@ import { track } from "@/lib/analytics";
 export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 
+  // JSON-only: cross-origin form posts cannot produce this content type (§46 CSRF).
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!contentType.startsWith("application/json")) {
+    return NextResponse.json({ error: "unsupported_media_type" }, { status: 415 });
+  }
+
   let user;
   try {
     ({ user } = await getViewer());

@@ -87,13 +87,13 @@ drop policy if exists "owner reads own quotes" on public.quotes;
 create policy "owner reads own quotes" on public.quotes for select
   using (auth.uid() = buyer_user_id);
 
-drop policy if exists "owner inserts own profile" on public.profiles;
-create policy "owner inserts own profile" on public.profiles for insert
-  with check (auth.uid() = id and suspended_at is null);
+-- profiles: read-only for clients. Writes (handles, suspension) happen only
+-- through trusted server code with the service role, which bypasses RLS.
+-- A permissive self-update policy would let a suspended user unsuspend
+-- themselves or cycle handles, so no insert/update policies exist.
 
+drop policy if exists "owner inserts own profile" on public.profiles;
 drop policy if exists "owner updates own profile" on public.profiles;
-create policy "owner updates own profile" on public.profiles for update
-  using (auth.uid() = id) with check (auth.uid() = id);
 
 -- payment_events: no client policies at all (service role only).
 -- reserved_domains: readable by service role; evaluated server-side.
