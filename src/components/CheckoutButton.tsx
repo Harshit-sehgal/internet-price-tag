@@ -8,6 +8,7 @@ const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 type TurnstileApi = {
   render: (el: HTMLElement, opts: Record<string, unknown>) => string;
+  execute: (widgetId?: string) => void;
   reset: (widgetId?: string) => void;
   remove: (widgetId: string) => void;
 };
@@ -52,6 +53,9 @@ export function CheckoutButton({ quoteId }: { quoteId: string }) {
         "error-callback": () => {
           tokenRef.current = null;
         },
+        "expired-callback": () => {
+          tokenRef.current = null;
+        },
       });
     });
     return () => {
@@ -69,23 +73,37 @@ export function CheckoutButton({ quoteId }: { quoteId: string }) {
     setError(null);
     try {
       let token: string | null = tokenRef.current;
-      if (TURNSTILE_SITE_KEY && !token) {
+      if (TURNSTILE_SITE_KEY) {
         const ts = (window as unknown as { turnstile?: TurnstileApi }).turnstile;
-        token = await new Promise<string | null>((resolve) => {
-          if (!ts) return resolve(null);
-          const original = tokenRef.current;
-          const started = Date.now();
-          const poll = setInterval(() => {
-            if (tokenRef.current && tokenRef.current !== original) {
-              clearInterval(poll);
-              resolve(tokenRef.current);
-            } else if (Date.now() - started > 8_000) {
-              clearInterval(poll);
-              resolve(null);
-            }
-          }, 150);
-        });
-        if (ts && widgetIdRef.current !== null) ts.reset(widgetIdRef.current);
+        if (ts && widgetIdRef.current !== null) {
+          // Invisible widgets require an explicit execute() to mint a fresh token.
+          // Previous tokens are single-use — clear and re-issue every checkout.
+          tokenRef.current = null;
+          try {
+            ts.execute(widgetIdRef.current);
+          } catch {
+            // execute can throw if the widget is not yet ready; fall through to poll
+          }
+          token = await new Promise<string | null>((resolve) => {
+            const started = Date.now();
+            const poll = setInterval(() => {
+              if (tokenRef.current) {
+                clearInterval(poll);
+                const t = tokenRef.current;
+                tokenRef.current = null;
+                resolve(t);
+              } else if (Date.now() - started > 8_000) {
+                clearInterval(poll);
+                resolve(null);
+              }
+            }, 100);
+          });
+          try {
+            ts.reset(widgetIdRef.current);
+          } catch {
+            /* already gone */
+          }
+        }
       }
       const res = await fetch("/api/checkout", {
         method: "POST",

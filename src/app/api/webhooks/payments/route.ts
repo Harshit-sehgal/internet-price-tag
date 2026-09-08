@@ -56,13 +56,18 @@ export async function POST(req: Request) {
       // successful delivery — do not surface as webhook error.
       await markPaymentEventStatus(provider.name, event.id, "processed", result.reason);
     } else if (result.outcome === "failed") {
-      const ignoredReasons = new Set(["quote_expired", "missing_quote_metadata", "unknown_quote"]);
-      const isIgnored =
-        result.reason !== undefined && ignoredReasons.has(result.reason) && Boolean(result.refunded);
+      // Refunded paths (stale/expired/unknown/wrong_price/already_holder/
+      // FINALIZE_ERROR) are successful webhook processing — the money was
+      // returned, not lost. Only non-refunded failures surface as error.
+      // "ignored" statuses on quote_expired / unknown_quote are kept as
+      // "ignored" so observability queries can distinguish the class.
+      const ignoredRefundReasons = new Set(["quote_expired", "missing_quote_metadata", "unknown_quote"]);
+      const isIgnoredRefund =
+        result.reason !== undefined && ignoredRefundReasons.has(result.reason) && Boolean(result.refunded);
       await markPaymentEventStatus(
         provider.name,
         event.id,
-        result.refunded ? (isIgnored ? "ignored" : "processed") : "error",
+        result.refunded ? (isIgnoredRefund ? "ignored" : "processed") : "error",
         result.reason,
       );
     } else if (result.outcome === "ignored") {

@@ -14,6 +14,11 @@ type Params = { params: Promise<{ domain: string }> };
 async function loadDomain(raw: string): Promise<{ canonical: string | null; reason: string; row: RepoDomain | null; sales: Awaited<ReturnType<typeof listSalesForDomain>> }> {
   const evalResult = evaluateDomain(decodeURIComponent(raw));
   if (!evalResult.eligible || !evalResult.canonicalDomain) {
+    // Reserved domains have a canonical form but are ineligible — surface them
+    // as a dedicated "unavailable" state instead of the generic error page.
+    if (evalResult.reason === "reserved" && evalResult.canonicalDomain) {
+      return { canonical: evalResult.canonicalDomain, reason: "reserved", row: null, sales: [] };
+    }
     return { canonical: null, reason: evalResult.reason, row: null, sales: [] };
   }
   const row = await getDomain(evalResult.canonicalDomain);
@@ -23,8 +28,15 @@ async function loadDomain(raw: string): Promise<{ canonical: string | null; reas
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { domain } = await params;
-  const { canonical, row } = await loadDomain(domain);
+  const { canonical, reason, row } = await loadDomain(domain);
   if (!canonical) return { title: "Unknown domain" };
+  if (reason === "reserved") {
+    return {
+      title: `${canonical} is reserved — not claimable`,
+      description: `${canonical} is reserved by the operator and cannot be claimed on The Internet Price Tag.`,
+      robots: { index: false, follow: true },
+    };
+  }
   if (!row || !row.holderUserId) {
     return {
       title: `${canonical} is unclaimed — $5 first claim`,
@@ -54,6 +66,7 @@ export default async function DomainPage({ params }: Params) {
   }
 
   const unclaimed = !row || !row.holderUserId;
+  const reserved = reason === "reserved";
   const quote = quoteFor({
     domain: canonical,
     holder: row?.holderHandle ?? null,
@@ -69,7 +82,20 @@ export default async function DomainPage({ params }: Params) {
         <p className="eyebrow">Symbolic Internet Price Tag</p>
         <h1 className="display display-domain">{canonical}</h1>
 
-        {unclaimed ? (
+        {reserved ? (
+          <div className="panel" style={{ borderColor: "var(--danger, #c0392b)" }}>
+            <div className="panel-header">
+              <span className="eyebrow">Unavailable</span>
+              <span className="small muted">operator-reserved</span>
+            </div>
+            <div className="panel-body stack">
+              <p className="muted" style={{ margin: 0 }}>
+                This tag has been reserved by the operator and cannot be claimed. Impersonation and sensitive
+                identity domains are permanently held off-market.
+              </p>
+            </div>
+          </div>
+        ) : unclaimed ? (
           <div className="panel unclaimed-bg">
             <div className="panel-header">
               <span className="eyebrow">Unclaimed</span>

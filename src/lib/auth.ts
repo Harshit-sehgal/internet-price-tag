@@ -65,8 +65,18 @@ export async function claimHandle(userId: string, rawHandle: string): Promise<{ 
     if (existing.handle !== handle) return { ok: false, reason: "HANDLE_LOCKED" };
     return { ok: true, handle };
   }
+  // Pre-read check — final exclusivity is the unique constraint on profiles.handle.
   const taken = await getProfileByHandle(handle);
   if (taken && taken.id !== userId) return { ok: false, reason: "HANDLE_TAKEN" };
-  await upsertProfile(userId, handle, null, null);
+  try {
+    await upsertProfile(userId, handle, null, null);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Postgres duplicate/handle uniqueness races between concurrent claim requests.
+    if (/duplicate key.*handle|unique.*handle|23505/i.test(msg)) {
+      return { ok: false, reason: "HANDLE_TAKEN" };
+    }
+    throw e;
+  }
   return { ok: true, handle };
 }
