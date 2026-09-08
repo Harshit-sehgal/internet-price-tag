@@ -70,6 +70,12 @@ begin
     return s;
   end if;
 
+  -- Blocklist check inside the transaction: a domain reserved between quote
+  -- creation and finalization must still fail here.
+  if exists (select 1 from public.reserved_domains where domain = p_domain) then
+    raise exception 'RESERVED_DOMAIN';
+  end if;
+
   -- Materialize the canonical row so two first-claim attempts contend on one lock.
   insert into public.domains(domain) values (p_domain)
   on conflict (domain) do nothing;

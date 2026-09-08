@@ -408,6 +408,7 @@ export async function finalizeTakeover(input: FinalizeInput): Promise<TakeoverOu
       if (code === "ALREADY_HOLDER") return { ok: false, code: "ALREADY_HOLDER" };
       if (code === "WRONG_PRICE") return { ok: false, code: "WRONG_PRICE" };
       if (code === "IDEMPOTENCY_CONFLICT") return { ok: false, code: "IDEMPOTENCY_CONFLICT" };
+      if (code === "RESERVED_DOMAIN") return { ok: false, code: "FINALIZE_ERROR" };
       return { ok: false, code: "FINALIZE_ERROR" };
     }
     return { ok: true, sale: toSale(data) };
@@ -490,28 +491,25 @@ export async function recordPaymentEvent(ev: {
   error?: string;
 }): Promise<void> {
   if (isProdDatastore) {
-    const { error } = await client().from("payment_events").upsert(
-      {
-        provider: ev.provider,
-        provider_event_id: ev.providerEventId,
-        provider_payment_id: ev.providerPaymentId,
-        event_type: ev.eventType,
-        payload_hash: ev.payloadHash ?? null,
-        status: ev.status,
-        error: ev.error ?? null,
-        processed_at: new Date().toISOString(),
-      },
-      { onConflict: "provider,provider_event_id" },
-    );
+    // Insert-only: duplicate (provider, provider_event_id) surfaces as a
+    // unique-violation so the webhook layer can treat it as idempotent
+    // delivery. Upsert would silently swallow the duplicate and break that
+    // signal.
+    const { error } = await client().from("payment_events").insert({
+      provider: ev.provider,
+      provider_event_id: ev.providerEventId,
+      provider_payment_id: ev.providerPaymentId,
+      event_type: ev.eventType,
+      payload_hash: ev.payloadHash ?? null,
+      status: ev.status,
+      error: ev.error ?? null,
+      processed_at: new Date().toISOString(),
+    });
     if (error) throw error;
     return;
   }
   const key = `${ev.provider}:${ev.providerEventId}`;
-  const existing = mem().paymentEvents.get(key);
-  if (existing) {
-    existing.status = ev.status;
-    return;
-  }
+  if (mem().paymentEvents.has(key)) throw new Error("duplicate key value violates unique constraint \"payment_events_provider_provider_event_id_key\"");
   mem().paymentEvents.set(key, {
     id: crypto.randomUUID(),
     provider: ev.provider,

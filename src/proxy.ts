@@ -32,6 +32,8 @@ export default async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/webhooks|api/market/pulse).*)",
+    // Skip the webhook (no user session needed) and the cheap demo pulse;
+    // keep all other routes session-aware.
+    "/((?!_next/static|_next/image|favicon.ico|api/webhooks|api/market/pulse|api/demo).*)",
   ],
 };

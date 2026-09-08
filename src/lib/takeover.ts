@@ -86,7 +86,13 @@ export async function processSucceededPayment(args: {
     const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "already_holder");
     return { outcome: "failed", refunded, reason: "already_holder" };
   }
-  // IDEMPOTENCY_CONFLICT / FINALIZE_ERROR: critical alert condition (§56).
+  if (outcome.code === "FINALIZE_ERROR") {
+    // RESERVED_DOMAIN surfaces as FINALIZE_ERROR via repo.ts; refund the stale payment.
+    logEvent("takeover_finalization_error", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, code: outcome.code, domain: quote.domain });
+    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "finalize_error");
+    return { outcome: "failed", refunded, reason: outcome.code };
+  }
+  // IDEMPOTENCY_CONFLICT: critical alert condition (§56) — mismatched reuse of a payment id.
   logEvent("takeover_finalization_error", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, code: outcome.code });
   return { outcome: "failed", reason: outcome.code };
 }
