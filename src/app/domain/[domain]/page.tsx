@@ -5,6 +5,7 @@ import { money, quoteFor } from "@/lib/game.ts";
 import { getDomain, listSalesForDomain, type RepoDomain } from "@/lib/repo";
 import { TakeoverCTA } from "@/components/TakeoverCTA";
 import { HistoryLedger } from "@/components/HistoryLedger";
+import { LiveRefresh } from "@/components/LiveRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ export default async function DomainPage({ params }: Params) {
 
   return (
     <div className="stack-lg">
+      <LiveRefresh />
       <section className="stack">
         <p className="eyebrow">Symbolic Internet Price Tag</p>
         <h1 className="display display-domain">{canonical}</h1>

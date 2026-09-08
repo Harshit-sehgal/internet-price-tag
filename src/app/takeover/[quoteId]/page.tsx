@@ -3,6 +3,7 @@ import { money } from "@/lib/game.ts";
 import { getQuote } from "@/lib/repo";
 import { nowMs } from "@/lib/time.ts";
 import { CheckoutButton } from "@/components/CheckoutButton";
+import { LiveRefresh } from "@/components/LiveRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ export default async function TakeoverPage({ params }: Params) {
 
   return (
     <div className="stack-lg" style={{ maxWidth: 640 }}>
+      <LiveRefresh />
       <section className="stack">
         <p className="eyebrow">Confirm your takeover</p>
         <h1 className="display display-section">{quote.domain}</h1>

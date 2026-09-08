@@ -3,6 +3,7 @@ import Link from "next/link";
 import { money, quoteFor } from "@/lib/game.ts";
 import { getSale } from "@/lib/repo";
 import { ShareButtons } from "@/components/ShareButtons";
+import { LiveRefresh } from "@/components/LiveRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,7 @@ export default async function SuccessPage({ params }: Params) {
 
   return (
     <div className="stack-lg" style={{ maxWidth: 720 }}>
+      <LiveRefresh />
       <section className="receipt stack">
         <span className="stamp">{stillHolder ? "Tag taken" : "Receipt"}</span>
         <p className="eyebrow" style={{ margin: 0 }}>

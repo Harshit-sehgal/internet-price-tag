@@ -3,6 +3,7 @@ import { money } from "@/lib/game.ts";
 import { SearchBar } from "@/components/SearchBar";
 import { MarketTable } from "@/components/MarketTable";
 import { ActivityFeed } from "@/components/ActivityFeed";
+import { LiveRefresh } from "@/components/LiveRefresh";
 
 // Demo seed only runs when no production datastore is configured (§41).
 seedDemoMarket([
@@ -25,6 +26,7 @@ export default async function Home() {
 
   return (
     <div className="stack-lg">
+      <LiveRefresh />
       <section className="stack">
         <p className="eyebrow">The Internet Price Tag</p>
         <h1 className="display display-hero">How much is the internet worth?</h1>

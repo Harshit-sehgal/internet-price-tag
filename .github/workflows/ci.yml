@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Market rules tests
+        run: npm run test:market
+
+      - name: Concurrency tests
+        run: npm run test:concurrency
+
+      - name: Full test suite
+        run: npm run test
+
+      - name: Production build
+        run: npm run build
+        env:
+          # Build must not require real credentials; app falls back to demo mode.
+          NEXT_TELEMETRY_DISABLED: 1
