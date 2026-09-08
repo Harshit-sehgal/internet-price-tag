@@ -11,8 +11,14 @@ export function SearchBar({ compact = false }: { compact?: boolean }) {
     e.preventDefault();
     const cleaned = value.trim().toLowerCase();
     if (!cleaned) return;
-    // Server normalizes again; this just makes URLs pleasant.
-    const slug = encodeURIComponent(cleaned.replace(/^https?:\/\//, "").split(/[/?#]/)[0]);
+    // Server normalizes again; this only makes the URL pleasant. Strip
+    // scheme, path/query/fragment and a leading www. to match it.
+    const slug = encodeURIComponent(
+      cleaned
+        .replace(/^https?:\/\//, "")
+        .split(/[/?#]/)[0]
+        .replace(/^www\./, ""),
+    );
     router.push(`/domain/${slug}`);
   }
 

@@ -10,6 +10,7 @@
     "test": "node --experimental-strip-types --import ./tests/helpers/register.mjs --test \"src/**/*.test.ts\" \"tests/**/*.test.ts\"",
     "test:market": "node --experimental-strip-types --test src/lib/game.test.ts src/lib/domains.test.ts",
     "test:concurrency": "node --experimental-strip-types --import ./tests/helpers/register.mjs --test \"tests/integration/*.test.ts\"",
+    "test:browser": "playwright test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "stripe": "^22.6.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",

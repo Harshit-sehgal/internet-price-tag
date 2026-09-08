@@ -19,6 +19,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Lint
         run: npm run lint
 
@@ -38,4 +41,9 @@ jobs:
         run: npm run build
         env:
           # Build must not require real credentials; app falls back to demo mode.
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Browser tests (§54)
+        run: npm run test:browser
+        env:
           NEXT_TELEMETRY_DISABLED: 1

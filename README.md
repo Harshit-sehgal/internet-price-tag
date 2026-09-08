@@ -1,5 +1,7 @@
 # The Internet Price Tag
 
+[![CI](https://github.com/Harshit-sehgal/internet-price-tag/actions/workflows/ci.yml/badge.svg)](https://github.com/Harshit-sehgal/internet-price-tag/actions/workflows/ci.yml)
+
 **How much is the internet worth?**
 
 The Internet Price Tag is a competitive internet game where people pay to become the current **symbolic holder** of familiar domain names such as `google.com`, `openai.com`, `apple.com`, a friend's site, a competitor, or their own startup.
@@ -75,6 +77,8 @@ npm run test        # market rules + concurrency suite
 npm run typecheck
 npm run lint
 npm run build
+npx playwright install chromium
+npm run test:browser # §54 browser suite (desktop + mobile, demo mode)
 ```
 
 The app runs with no credentials in demo mode (in-memory market + simulated payments). For production, copy `.env.example`, configure Supabase (auth + Postgres) and a Stripe account, and apply `db/schema.sql` then `db/schema-extended.sql`.
