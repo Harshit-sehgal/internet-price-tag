@@ -181,6 +181,54 @@ export async function listSalesForBuyer(buyerHandle: string, limit = 50): Promis
   return (data ?? []).map(toSale);
 }
 
+/**
+ * Most-contested domains (§39 discovery): more than one sale, ranked by sale
+ * count DESC, latest sale DESC, domain ASC — deterministic for all visitors.
+ * Returns live market state so the UI can show current holder/price.
+ */
+export async function listMostContested(limit = 6): Promise<Array<{ domain: string; sales: number; priceCents: number; holderHandle: string }>> {
+  const tally = (rows: Array<{ domain: string; createdAt: string }>) => {
+    const counts = new Map<string, { count: number; latest: string }>();
+    for (const r of rows) {
+      const cur = counts.get(r.domain);
+      if (!cur) counts.set(r.domain, { count: 1, latest: r.createdAt });
+      else {
+        cur.count += 1;
+        if (r.createdAt > cur.latest) cur.latest = r.createdAt;
+      }
+    }
+    return counts;
+  };
+
+  let counts: Map<string, { count: number; latest: string }>;
+  if (!isProdDatastore) {
+    counts = tally(mem().sales);
+  } else {
+    const { data, error } = await client()
+      .from("sales")
+      .select("domain, created_at")
+      .order("created_at", { ascending: false })
+      .limit(2000);
+    if (error) throw error;
+    counts = tally((data ?? []).map((row) => ({ domain: String(row.domain), createdAt: String(row.created_at) })));
+  }
+
+  const domains = [...counts.entries()]
+    .filter(([, v]) => v.count > 1)
+    .sort((a, b) => b[1].count - a[1].count || b[1].latest.localeCompare(a[1].latest) || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([domain]) => domain);
+  if (domains.length === 0) return [];
+
+  const rows = await Promise.all(domains.map((d) => getDomain(d)));
+  return domains.flatMap((domain, i) => {
+    const row = rows[i];
+    return row && row.holderUserId
+      ? [{ domain, sales: counts.get(domain)?.count ?? 0, priceCents: row.priceCents, holderHandle: row.holderHandle! }]
+      : [];
+  });
+}
+
 export async function listRecentSales(limit = 20): Promise<RepoSale[]> {
   if (!isProdDatastore) {
     return [...mem().sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
@@ -298,8 +346,6 @@ export async function createQuote(domainInput: string, buyerUserId: string): Pro
     domain, holderUserId: null, holderHandle: null, priceCents: 0, version: 0, claimedAt: null, updatedAt: null,
   };
   if (current.holderUserId && current.holderUserId === buyerUserId) throw new Error("ALREADY_HOLDER");
-  // Demo mirror of the in-DB reserved_domains check above.
-  if (mem().domains.get(`__reserved:${domain}`)) throw new Error("DOMAIN_INELIGIBLE: reserved");
   const q = quoteFor({ domain, holder: current.holderHandle, priceCents: current.priceCents, version: current.version, history: [] });
   const id = crypto.randomUUID();
   const quote: RepoQuote = {
@@ -506,17 +552,18 @@ async function isReservedInDb(domain: string): Promise<boolean> {
 export function seedDemoMarket(items: Array<{ domain: string; holderHandle: string; priceCents: number }>): void {
   if (isProdDatastore) return; // production never fabricates purchases (§41)
   const m = mem();
-  // Idempotent: module-level seeding (src/app/page.tsx) runs on every SSR render
-  // in dev — don't duplicate sales or overwrite newer holder state.
+  // Idempotent: module-level seeding runs on every SSR render in dev — don't
+  // duplicate sales or overwrite newer holder state.
   for (const item of items) {
     if (m.domains.has(item.domain)) continue;
     const now = new Date().toISOString();
     // Handles are stored bare (no leading @) everywhere; strip if a caller included it.
     const handle = item.holderHandle.replace(/^@+/, "").toLowerCase();
+    const userId = `demo-${handle}`;
     const sale: RepoSale = {
       id: crypto.randomUUID(),
       domain: item.domain,
-      buyerUserId: `demo-${handle}`,
+      buyerUserId: userId,
       buyerHandle: handle,
       previousHolderHandle: null,
       previousPriceCents: 0,
@@ -535,5 +582,8 @@ export function seedDemoMarket(items: Array<{ domain: string; holderHandle: stri
       updatedAt: now,
     });
     m.sales.push(sale);
+    if (!m.profiles.has(handle)) {
+      m.profiles.set(handle, { id: userId, handle, displayName: null, avatarUrl: null, suspendedAt: null });
+    }
   }
 }

@@ -1,8 +1,9 @@
-import { listMarket, listRecentSales, marketValueCents, seedDemoMarket } from "@/lib/repo";
+import { listMarket, listRecentSales, listMostContested, marketValueCents, seedDemoMarket } from "@/lib/repo";
 import { money } from "@/lib/game.ts";
 import { SearchBar } from "@/components/SearchBar";
 import { MarketTable } from "@/components/MarketTable";
 import { ActivityFeed } from "@/components/ActivityFeed";
+import { MostContested } from "@/components/MostContested";
 import { LiveRefresh } from "@/components/LiveRefresh";
 
 // Demo seed only runs when no production datastore is configured (§41).
@@ -18,9 +19,10 @@ seedDemoMarket([
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [rows, sales, value] = await Promise.all([
+  const [rows, sales, contested, value] = await Promise.all([
     listMarket(25),
     listRecentSales(8),
+    listMostContested(5),
     marketValueCents(),
   ]);
 
@@ -48,6 +50,11 @@ export default async function Home() {
         <p className="small muted" style={{ margin: 0 }}>
           * according to this ridiculous website. Ranked by current symbolic price.
         </p>
+      </section>
+
+      <section className="section-rule stack">
+        <h2 className="display display-section">Most Fought Over</h2>
+        <MostContested rows={contested} />
       </section>
 
       <section className="section-rule stack">

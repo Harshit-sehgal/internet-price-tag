@@ -23,6 +23,15 @@ test.describe("homepage and discovery", () => {
     await page.goto("/");
     await expect(page.getByText(/took\s+/).first()).toBeVisible();
   });
+
+  test("most-fought-over module renders contested domains or the empty state", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Most Fought Over" })).toBeVisible();
+    // Demo seed has no multi-sale domains; either state is valid.
+    const contested = page.locator(".market-table").nth(1); // second table on the page
+    const empty = page.getByText("Nothing has been fought over yet");
+    await expect(contested.or(empty).first()).toBeVisible();
+  });
 });
 
 test.describe("unclaimed domain experience", () => {
