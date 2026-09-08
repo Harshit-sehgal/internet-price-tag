@@ -91,14 +91,15 @@ export const seededDomains: DomainRecord[] = [
 ];
 
 export function normalizeDomain(input: string) {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .split(/[/?#]/)[0]
-    .replace(/\.+$/, "")
-    .replace(/[^a-z0-9.-]/g, "");
+  let s = input.trim().toLowerCase();
+  if (!s) return "";
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, ""); // scheme
+  s = s.split("@").pop() ?? ""; // userinfo
+  s = s.split(/[/?#]/)[0] ?? ""; // path, query, fragment
+  s = s.replace(/:\d{1,5}$/, ""); // port
+  s = s.replace(/^www\./, ""); // leading www
+  s = s.replace(/\.+$/, ""); // trailing dots
+  return s;
 }
 
 export function isPlausibleDomain(input: string) {
