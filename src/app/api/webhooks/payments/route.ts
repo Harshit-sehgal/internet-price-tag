@@ -47,15 +47,27 @@ export async function POST(req: Request) {
       quoteId: event.quoteId,
       paidCents: event.amountCents,
     });
-    if (result.outcome === "processed" || result.outcome === "duplicate") {
+    if (result.outcome === "processed") {
       await markPaymentEventStatus(provider.name, event.id, "processed");
+    } else if (result.outcome === "duplicate") {
+      // Stripe retries with the same event id already short-circuited at
+      // recordPaymentEvent; this path is a different event id for the same
+      // paymentId that finalizeTakeover resolved idempotently. Still a
+      // successful delivery — do not surface as webhook error.
+      await markPaymentEventStatus(provider.name, event.id, "processed", result.reason);
     } else if (result.outcome === "failed") {
+      const ignoredReasons = new Set(["quote_expired", "missing_quote_metadata", "unknown_quote"]);
+      const isIgnored =
+        result.reason !== undefined && ignoredReasons.has(result.reason) && Boolean(result.refunded);
       await markPaymentEventStatus(
         provider.name,
         event.id,
-        result.refunded ? "processed" : "error",
+        result.refunded ? (isIgnored ? "ignored" : "processed") : "error",
         result.reason,
       );
+    } else if (result.outcome === "ignored") {
+      // Fallback: legacy ignored outcomes (should be failed with refund now).
+      await markPaymentEventStatus(provider.name, event.id, "ignored", result.reason);
     }
     return Response.json({ received: true, result });
   }

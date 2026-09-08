@@ -63,12 +63,19 @@ function MockCheckoutInner() {
       router.push(`/success/${body.result.saleId}`);
       return;
     }
+    const reason = (body?.result?.reason ?? body?.error ?? "") as string;
     setState("error");
-    setMessage(
-      body?.result?.reason === "stale_quote"
-        ? "Someone took this tag before your payment completed. A refund was issued automatically."
-        : body?.result?.reason ?? "Webhook processing failed.",
-    );
+    if (reason === "stale_quote") {
+      setMessage("Someone took this tag before your payment completed. A refund was issued automatically.");
+    } else if (reason === "quote_expired") {
+      setMessage("Your quote expired before payment settled. A refund was issued — please get a fresh price.");
+    } else if (reason === "already_holder") {
+      setMessage("You already hold this tag. Your payment was refunded.");
+    } else if (reason === "FINALIZE_ERROR") {
+      setMessage("This domain is no longer available. Your payment was refunded.");
+    } else {
+      setMessage(reason || "Webhook processing failed — your payment was refunded. Check the domain page.");
+    }
   }
 
   if (!quoteId) {

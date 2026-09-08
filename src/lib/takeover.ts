@@ -20,32 +20,38 @@ export async function processSucceededPayment(args: {
 }): Promise<WebhookProcessingResult> {
   if (!args.quoteId) {
     logEvent("webhook_payment_missing_quote", "warn", { provider: args.provider, event_id: args.eventId, payment_id: args.paymentId });
-    return { outcome: "ignored", reason: "missing_quote_metadata" };
+    const refunded = await refundWithoutQuote(args.provider, args.eventId, args.paymentId, "missing_quote_metadata");
+    return { outcome: "failed", refunded, reason: "missing_quote_metadata" };
   }
 
   const quote = await getQuote(args.quoteId);
   if (!quote) {
     logEvent("webhook_payment_unknown_quote", "warn", { provider: args.provider, event_id: args.eventId, payment_id: args.paymentId, quote_id: args.quoteId });
-    return { outcome: "ignored", reason: "unknown_quote" };
-  }
-  if (quote.status === "consumed") {
-    // Idempotent replay of an already-applied payment.
-    return { outcome: "duplicate", reason: "quote_already_consumed" };
+    const refunded = await refundWithoutQuote(args.provider, args.eventId, args.paymentId, "unknown_quote");
+    return { outcome: "failed", refunded, reason: "unknown_quote" };
   }
   if (new Date(quote.expiresAt).getTime() < Date.now()) {
     await markQuoteStatus(quote.id, "expired");
     logEvent("webhook_payment_expired_quote", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
-    return { outcome: "ignored", reason: "quote_expired" };
+    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "quote_expired");
+    return { outcome: "failed", refunded, reason: "quote_expired" };
   }
+
+  // Do not short-circuit on consumed: a duplicate webhook for the same
+  // paymentId will be handled idempotently by finalizeTakeover's sales
+  // lookup, while a reused quote with a new paymentId correctly becomes
+  // STALE_QUOTE and is refunded.
 
   const profile = await getProfileById(quote.buyerUserId);
   if (!profile) {
     logEvent("takeover_failed_buyer_profile_missing", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
-    return { outcome: "failed", reason: "buyer_profile_missing" };
+    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "buyer_profile_missing");
+    return { outcome: "failed", refunded, reason: "buyer_profile_missing" };
   }
   if (profile.suspendedAt) {
     logEvent("takeover_blocked_buyer_suspended", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
-    return { outcome: "failed", reason: "buyer_suspended" };
+    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "buyer_suspended");
+    return { outcome: "failed", refunded, reason: "buyer_suspended" };
   }
 
   if (args.paidCents != null && args.paidCents !== quote.nextPriceCents) {
@@ -64,7 +70,17 @@ export async function processSucceededPayment(args: {
     providerPaymentId: args.paymentId,
   });
 
+  const alreadyConsumed = quote.status === "consumed";
+
   if (outcome.ok) {
+    // Detect idempotent replay via sales lookup so duplicate webhooks
+    // surface as duplicate rather than processed. Without this, a re-delivered
+    // Stripe event would re-emit takeover_succeeded and confuse monitoring.
+    // finalizeTakeover returns the same sale for the same paymentId.
+    if (alreadyConsumed) {
+      await markQuoteStatus(quote.id, "consumed");
+      return { outcome: "duplicate", saleId: outcome.sale.id, reason: "quote_already_consumed" };
+    }
     await markQuoteStatus(quote.id, "consumed");
     logEvent("takeover_succeeded", "info", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, domain: quote.domain, price_cents: outcome.sale.priceCents, buyer: outcome.sale.buyerHandle, sale_id: outcome.sale.id });
     return { outcome: "processed", saleId: outcome.sale.id };
@@ -118,6 +134,30 @@ async function refundWithLog(
     return true;
   } catch (e) {
     logEvent("refund_failed", "error", { provider, payment_id: paymentId, quote_id: quote.id, reason, detail: e instanceof Error ? e.message : String(e) });
+    await markPaymentEventStatus(provider, eventId, "error", "refund_failed: provider_error");
+    return false;
+  }
+}
+
+async function refundWithoutQuote(
+  provider: string,
+  eventId: string,
+  paymentId: string,
+  reason: string,
+): Promise<boolean> {
+  try {
+    const { getPaymentProvider } = await import("./payments.ts");
+    const providerImpl = getPaymentProvider();
+    const res = await providerImpl.refundPayment(paymentId, reason);
+    if (!res.ok) {
+      logEvent("refund_failed", "error", { provider, payment_id: paymentId, reason, detail: res.error });
+      await markPaymentEventStatus(provider, eventId, "error", `refund_failed: ${res.error}`);
+      return false;
+    }
+    logEvent("stale_payment_refunded", "info", { provider, payment_id: paymentId, reason, quote_id: null });
+    return true;
+  } catch (e) {
+    logEvent("refund_failed", "error", { provider, payment_id: paymentId, reason, detail: e instanceof Error ? e.message : String(e) });
     await markPaymentEventStatus(provider, eventId, "error", "refund_failed: provider_error");
     return false;
   }
