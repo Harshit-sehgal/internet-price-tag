@@ -1,6 +1,7 @@
 import { recordPaymentEvent, markPaymentEventStatus } from "@/lib/repo";
 import { getPaymentProvider } from "@/lib/payments";
 import { processSucceededPayment } from "@/lib/takeover";
+import { logEvent } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
 
   const verification = provider.verifyWebhook(raw, signature);
   if (!verification.ok) {
+    logEvent("webhook_signature_invalid", "warn", { provider: provider.name, reason: verification.reason });
     return Response.json({ error: "invalid_signature", reason: verification.reason }, { status: 400 });
   }
 
@@ -33,6 +35,7 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     // Unique violation => we already processed this event id.
+    logEvent("webhook_duplicate_event", "info", { provider: provider.name, event_id: event.id });
     return Response.json({ received: true, duplicate: true, detail: String(e) });
   }
 
