@@ -47,3 +47,8 @@ jobs:
         run: npm run test:browser
         env:
           NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Concurrency race test over live HTTP (§74)
+        run: npm run test:race
+        env:
+          NEXT_TELEMETRY_DISABLED: 1

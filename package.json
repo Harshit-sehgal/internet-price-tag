@@ -11,6 +11,7 @@
     "test:market": "node --experimental-strip-types --test src/lib/game.test.ts src/lib/domains.test.ts",
     "test:concurrency": "node --experimental-strip-types --import ./tests/helpers/register.mjs --test \"tests/integration/*.test.ts\"",
     "test:browser": "playwright test",
+    "test:race": "node tests/load/race.mjs http://127.0.0.1:3111 12",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
