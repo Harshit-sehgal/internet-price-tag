@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { listMarket } from "@/lib/repo";
+import { isDomainReserved, listMarket } from "@/lib/repo";
 
 export const dynamic = "force-dynamic";
 
@@ -9,11 +9,14 @@ export const dynamic = "force-dynamic";
  * checkouts, receipts and empty holder pages stay out of the index.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  // Filter out reserved domains: DB-reserved entries should not be crawled
-  // even if they have a live row (e.g. grandfathered before reservation).
-  const { evaluateDomain } = await import("@/lib/domains.ts");
+  // Filter out reserved domains (static blocklist + DB reserved_domains).
+  // DB-reserved entries must not be crawled even if they have a live row
+  // (e.g. grandfathered before reservation) — holder stays visible via
+  // /domain/[domain] but stays out of the index.
   const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  const rows = (await listMarket(500)).filter((r) => evaluateDomain(r.domain).reason !== "reserved");
+  const raw = await listMarket(500);
+  const reservedFlags = await Promise.all(raw.map((r) => isDomainReserved(r.domain)));
+  const rows = raw.filter((_, i) => !reservedFlags[i]);
   return [
     {
       url: base,

@@ -221,7 +221,14 @@ export async function listMostContested(limit = 6): Promise<Array<{ domain: stri
   if (domains.length === 0) return [];
 
   const rows = await Promise.all(domains.map((d) => getDomain(d)));
+  // Reserved domains must not surface in discovery (§7/§38) even if they have
+  // history — evaluate static blocklist synchronously and DB list async.
+  const { evaluateDomain } = await import("./domains.ts");
+  const reservedFlags = await Promise.all(
+    domains.map(async (d) => evaluateDomain(d).reason === "reserved" || (isProdDatastore ? await isReservedInDb(d) : false)),
+  );
   return domains.flatMap((domain, i) => {
+    if (reservedFlags[i]) return [];
     const row = rows[i];
     return row && row.holderUserId
       ? [{ domain, sales: counts.get(domain)?.count ?? 0, priceCents: row.priceCents, holderHandle: row.holderHandle! }]

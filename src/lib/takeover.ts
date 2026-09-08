@@ -32,7 +32,12 @@ export async function processSucceededPayment(args: {
   }
   // Terminal quote states must never create a sale — cover the webhook race
   // where Stripe retries arrive after we already marked the quote.
-  if (quote.status !== "active" && quote.status !== "checkout_created") {
+  // Note: "consumed" is intentionally excluded here — a duplicate webhook for
+  // the same paymentId on a consumed quote is legitimate (Stripe retries the
+  // same event) and is handled idempotently via finalizeTakeover + the
+  // alreadyConsumed duplicate path below. Expiry for consumed quotes is also
+  // ignored: the sale already happened, the TTL no longer matters.
+  if (quote.status !== "active" && quote.status !== "checkout_created" && quote.status !== "consumed") {
     if (quote.status === "expired" || quote.status === "stale" || quote.status === "cancelled") {
       logEvent("webhook_payment_terminal_quote", "warn", {
         provider: args.provider,
@@ -43,19 +48,18 @@ export async function processSucceededPayment(args: {
       const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, `quote_${quote.status}`);
       return { outcome: "failed", refunded, reason: `quote_${quote.status}` };
     }
-    // "consumed" is handled below via alreadyConsumed -> duplicate detection.
-    if (quote.status !== "consumed") {
-      logEvent("webhook_payment_terminal_quote", "warn", {
-        provider: args.provider,
-        payment_id: args.paymentId,
-        quote_id: quote.id,
-        quote_status: quote.status,
-      });
-      const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, `quote_${quote.status}`);
-      return { outcome: "failed", refunded, reason: `quote_${quote.status}` };
-    }
+    logEvent("webhook_payment_terminal_quote", "warn", {
+      provider: args.provider,
+      payment_id: args.paymentId,
+      quote_id: quote.id,
+      quote_status: quote.status,
+    });
+    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, `quote_${quote.status}`);
+    return { outcome: "failed", refunded, reason: `quote_${quote.status}` };
   }
-  if (new Date(quote.expiresAt).getTime() < Date.now()) {
+  // Only non-consumed quotes expire — consumed quotes already produced a sale
+  // and must not be refunded on TTL expiry (that would refund a valid sale).
+  if (quote.status !== "consumed" && new Date(quote.expiresAt).getTime() < Date.now()) {
     await markQuoteStatus(quote.id, "expired");
     logEvent("webhook_payment_expired_quote", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
     const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "quote_expired");
@@ -102,8 +106,9 @@ export async function processSucceededPayment(args: {
     // surface as duplicate rather than processed. Without this, a re-delivered
     // Stripe event would re-emit takeover_succeeded and confuse monitoring.
     // finalizeTakeover returns the same sale for the same paymentId.
+    // Do not mark a duplicate delivery as consumed again — the quote already
+    // is, and touching it again would be a redundant write.
     if (alreadyConsumed) {
-      await markQuoteStatus(quote.id, "consumed");
       return { outcome: "duplicate", saleId: outcome.sale.id, reason: "quote_already_consumed" };
     }
     await markQuoteStatus(quote.id, "consumed");

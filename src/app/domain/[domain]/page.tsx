@@ -22,13 +22,17 @@ async function loadDomain(raw: string): Promise<{ canonical: string | null; reas
     return { canonical: null, reason: evalResult.reason, row: null, sales: [] };
   }
   const canonical = evalResult.canonicalDomain;
-  // DB-backed reserved check: domains in reserved_domains with a live row must
-  // also surface as unavailable (no CTA, noindex). Keep the domain lookup
-  // conditional so unclaimed/non-reserved paths pay no extra cost.
-  const reservedInDb = await isDomainReserved(canonical);
-  if (reservedInDb) return { canonical, reason: "reserved", row: null, sales: [] };
-  const row = await getDomain(canonical);
-  const sales = await listSalesForDomain(canonical, 30);
+  // DB-backed reserved check: domains in reserved_domains must surface as
+  // unavailable (no CTA, noindex). Keep holder/history visible when the
+  // domain was reserved after sales existed, so the ledger stays honest.
+  const [reservedInDb, row, sales] = await Promise.all([
+    isDomainReserved(canonical),
+    getDomain(canonical),
+    listSalesForDomain(canonical, 30),
+  ]);
+  if (reservedInDb) {
+    return { canonical, reason: "reserved", row, sales };
+  }
   return { canonical, reason: evalResult.reason, row, sales };
 }
 
