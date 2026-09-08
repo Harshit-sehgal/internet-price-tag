@@ -7,3 +7,6 @@ out/
 .vercel/
 .DS_Store
 *.log
+.freebuff/
+tsconfig.tsbuildinfo
+*.tsbuildinfo

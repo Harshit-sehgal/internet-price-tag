@@ -474,11 +474,13 @@ export function seedDemoMarket(items: Array<{ domain: string; holderHandle: stri
   const m = mem();
   for (const item of items) {
     const now = new Date().toISOString();
+    // Handles are stored bare (no leading @) everywhere; strip if a caller included it.
+    const handle = item.holderHandle.replace(/^@+/, "").toLowerCase();
     const sale: RepoSale = {
       id: crypto.randomUUID(),
       domain: item.domain,
-      buyerUserId: `demo-${item.holderHandle.replace("@", "")}`,
-      buyerHandle: item.holderHandle,
+      buyerUserId: `demo-${handle}`,
+      buyerHandle: handle,
       previousHolderHandle: null,
       previousPriceCents: 0,
       priceCents: item.priceCents,
@@ -489,7 +491,7 @@ export function seedDemoMarket(items: Array<{ domain: string; holderHandle: stri
     m.domains.set(item.domain, {
       domain: item.domain,
       holderUserId: sale.buyerUserId,
-      holderHandle: item.holderHandle,
+      holderHandle: handle,
       priceCents: item.priceCents,
       version: 1,
       claimedAt: now,
