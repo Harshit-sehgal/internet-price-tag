@@ -28,6 +28,14 @@ export async function POST(req: Request) {
   const rl = rateLimit(`checkout:${user.id}`, 6, 60_000) && rateLimit(`checkout:ip:${ip}`, 12, 60_000);
   if (!rl) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
 
+  // Suspended buyers can still reach this endpoint after the quote was created;
+  // enforce here too so the provider never receives a tainted checkout.
+  const { getProfileById: getProfileForCheckout } = await import("@/lib/repo");
+  const viewerProfile = await getProfileForCheckout(user.id);
+  if (viewerProfile?.suspendedAt) {
+    return NextResponse.json({ code: "SUSPENDED", error: "account suspended" }, { status: 403 });
+  }
+
   let quoteId: string | undefined;
   try {
     const body = (await req.json()) as { quoteId?: string };
@@ -48,11 +56,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "quote_expired" }, { status: 409 });
   }
 
-  const { getProfileById } = await import("@/lib/repo");
-  const profile = await getProfileById(user.id);
-  // Webhook still resolves the canonical handle from the DB; this is only for
-  // provider-runner metadata and should never be a raw user id when possible.
-  const checkoutHandle = profile?.handle ?? `user_${user.id.slice(0, 8)}`;
+  // Reuse the profile just fetched above.
+  const checkoutHandle = viewerProfile?.handle ?? `user_${user.id.slice(0, 8)}`;
 
   const provider = getPaymentProvider();
   const base = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;

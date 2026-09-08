@@ -32,9 +32,9 @@ The challenger pays the **full next price**, not only the increment. Money is st
 
 The previous UI direction has been rejected and **has been replaced**. The current app is a ledger-style "Internet Exchange" design built from scratch (off-white paper, hard rules, tabular numerals, no SaaS cards/gradients).
 
-**Implemented (V1 core):** market homepage with search and activity feed, domain pages with price-transparency math and history, server-authoritative quotes (5-minute TTL), versioned atomic takeovers, Supabase auth with public handles, payment-provider abstraction with Stripe and a signed-demo provider, idempotent webhooks, stale-quote auto-refund path, success receipt with X share and dynamic OG images, legal pages, rate limiting, analytics wrapper, operator SQL, and a concurrency test suite.
+**Implemented (V1 core):** market homepage with search and activity feed, domain pages with price-transparency math and history, lightweight `/u/[handle]` holder profiles, server-authoritative quotes (5-minute TTL), versioned atomic takeovers (DB `FOR UPDATE` + in-memory mirror), Supabase SSR auth proxy + handle onboarding, reserved-domain blocklist + RLS lockdown + CSRF guards, Stripe + signed-demo payment providers with idempotent webhooks and stale-quote auto-refund, share/attribution (`?via=share` → `share_visit`) + dynamic OG cards, realtime display sync, structured payment logging (§56), operator SQL, robots/sitemap SEO gates, and full test coverage (unit + concurrency + §54 Playwright desktop & mobile against the production build in demo mode — see `DEPLOY.md` for the owner-gated go-live runbook).
 
-**Not yet done before real-money launch:** configure live Supabase + Stripe credentials and apply `db/schema*.sql`, deploy, sandbox payment QA, professional legal review, and monitoring/alerting (§56).
+**Not yet done before real-money launch:** create Supabase project (apply `db/schema.sql` then `db/schema-extended.sql`, enable Google/magic-link auth), add Stripe live keys + webhook, set Vercel envs (split Preview/Production per §58), run the §76 sandbox payment gate on test keys, get professional legal review of the plain-language terms/privacy/refunds pages — then wire Vercel log alerts on the `error`-level payment events from `src/lib/logger.ts` (§56).
 
 The reusable foundation is:
 

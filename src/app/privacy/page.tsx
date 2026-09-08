@@ -19,6 +19,13 @@ export default function PrivacyPage() {
         public by design. Do not choose a handle that identifies you if you want anonymity.
       </p>
 
+      <h2 className="display" style={{ fontSize: 18 }}>Cookies &amp; realtime</h2>
+      <p>
+        Supabase authentication and realtime display updates use first-party cookies and WebSocket
+        connections. No third-party advertising cookies. Browser “Do Not Track” is respected by
+        not loading analytics in demo mode where no analytics provider is configured.
+      </p>
+
       <h2 className="display" style={{ fontSize: 18 }}>Payments</h2>
       <p>
         Card data never touches our servers; payments are processed by our payment provider. We

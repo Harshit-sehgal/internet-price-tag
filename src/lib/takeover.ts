@@ -34,6 +34,7 @@ export async function processSucceededPayment(args: {
   }
   if (new Date(quote.expiresAt).getTime() < Date.now()) {
     await markQuoteStatus(quote.id, "expired");
+    logEvent("webhook_payment_expired_quote", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
     return { outcome: "ignored", reason: "quote_expired" };
   }
 

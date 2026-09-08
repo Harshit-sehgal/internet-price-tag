@@ -84,7 +84,10 @@ test.describe("holder profiles (/u/[handle])", () => {
   });
 
   test("unknown handle shows the empty state", async ({ page }) => {
-    await page.goto("/u/latentspace");
+    // Use a handle that never appears in the demo seed or smoketest flow.
+    // (The seed now includes real profile-like entries, so latentspace is taken.)
+    const ghost = `ghost${Date.now().toString(36).slice(-6)}`;
+    await page.goto(`/u/${ghost}`);
     await expect(page.getByText("holds nothing yet")).toBeVisible();
   });
 });

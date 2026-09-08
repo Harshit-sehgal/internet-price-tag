@@ -41,6 +41,14 @@ export default function TermsPage() {
         will respond to takedown requests via the contact channel.
       </p>
 
+      <h2 className="display" style={{ fontSize: 18 }}>Governing law &amp; disputes</h2>
+      <p>
+        These plain-language summaries will be replaced by the final legal documents before
+        real-money launch, reviewed under the operating jurisdiction. Until then the app runs in
+        demo mode with no real payments; when it goes live the final terms will name the
+        operating entity, governing law, and dispute-resolution process.
+      </p>
+
       <p className="small muted">Contact: moderation requests via the repository issue tracker.</p>
     </article>
   );
