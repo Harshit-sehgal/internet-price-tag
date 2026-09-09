@@ -24,11 +24,17 @@ export async function POST(req: Request) {
   if (!(await rateLimit(`handle:${user.id}`, 5, 60_000))) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
+  const ipForHandle = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (!(await rateLimit(`handle:ip:${ipForHandle}`, 15, 60_000))) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
 
   let handle = "";
   let next = "/";
   try {
-    const body = (await req.json()) as { handle?: string; next?: string };
+    const raw = await req.text();
+    if (raw.length > 4_096) return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
+    const body = JSON.parse(raw || "{}") as { handle?: string; next?: string };
     handle = body.handle ?? "";
     next = body.next && body.next.startsWith("/") && !body.next.startsWith("//") ? body.next : "/";
   } catch {

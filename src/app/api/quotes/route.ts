@@ -33,12 +33,23 @@ export async function POST(req: Request) {
 
   let domain: string | undefined;
   try {
-    const body = (await req.json()) as { domain?: string };
+    const raw = await req.text();
+    if (raw.length > 4_096) return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
+    const body = JSON.parse(raw || "{}") as { domain?: string };
     domain = body.domain;
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
   if (!domain) return NextResponse.json({ error: "domain_required" }, { status: 400 });
+  // Layered domain abuse guard (§46): shared Upstash counter, generous so
+  // in-memory/C I tests never flap; production throttles hot domains.
+  const { normalizeDomain } = await import("@/lib/game.ts");
+  const normalizedDomain = normalizeDomain(domain);
+  if (normalizedDomain) {
+    const rlDomain = await rateLimit(`quote:domain:${normalizedDomain}`, 30, 60_000);
+    const rlUserDomain = await rateLimit(`quote:user-domain:${user.id}:${normalizedDomain}`, 8, 60_000);
+    if (!rlDomain || !rlUserDomain) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
 
   try {
     const quote = await createQuote(domain, user.id);
