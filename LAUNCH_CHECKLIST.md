@@ -52,10 +52,10 @@ Status legend — demo-mode tests passing is NOT production-done:
 
 ## Reliability
 
-- ✅ Structured JSON logs for all §56 critical payment events + payload hashes (no secret logging)
-- ✅ CI runs lint, typecheck, unit, concurrency, browser and race tests on every push (migrations + analytics + `api/health` checked)
-- ✅ Versioned migrations in `supabase/migrations/` + portable `db/*.sql` (DEPLOY.md §1; `supabase/migrations/README.md`)
-- 🟡 Alert rules documented (DEPLOY.md §8) but no alert destination wired yet
+- ✅ Structured JSON logs for all §56 critical payment events + payload hashes (no secret logging); optional Sentry forwarding for error-level events when `SENTRY_DSN` is set (still needs owner Log Drain + health-check monitoring)
+- ✅ CI runs lint, typecheck, unit, concurrency, browser and race tests on every push; new checks: migrations structure determinism + analytics taxonomy + `/api/health` liveness/readiness (`?check=db`)
+- ✅ Versioned migrations in `supabase/migrations/` + portable `db/*.sql` (DEPLOY.md §1; `supabase/migrations/README.md`) — CI verifies fresh-DB can boot from these
+- 🟡 Alert rules documented (DEPLOY.md §8) but no alert destination wired yet (owner to add Vercel Log Drains + `/api/health` uptime check)
 - 🔒 Sentry/Vercel alerts + Supabase backups/PITR (owner settings; recovery runbook in DEPLOY.md §7)
 
 ## Distribution

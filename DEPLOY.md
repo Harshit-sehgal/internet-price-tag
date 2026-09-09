@@ -98,8 +98,15 @@ stale payment. **No unexplained payment states are permitted.**
 
 ## 8. Monitoring (item 9)
 
-All server logs are single-line JSON. Alert (Vercel Log Drains → Sentry or
-your alert tool) on any of these at level `error`:
+All server logs are single-line JSON; optionally mirrored to Sentry when
+`SENTRY_DSN` is set (server-side, sampling 0.1; no client SDK yet).
+Add `SENTRY_DSN` to your Vercel envs (Production + Preview) when you wire
+the alert destination. Until then, Vercel Log Drains + the `/api/health`
+liveness probe are the monitoring path. Configure Log Drain alerts
+(Dashboard → Logs → Log Drains → *Create drain*) and a simple uptime check
+against `https://<your-domain>/api/health` (and `?check=db` for readiness).
+
+Alert on any of these at level `error`:
 
 - `refund_failed` — money needs manual review; the payment was NOT applied.
 - `takeover_finalization_error` — includes `IDEMPOTENCY_CONFLICT` (payment-id

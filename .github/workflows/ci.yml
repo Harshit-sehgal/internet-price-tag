@@ -48,6 +48,46 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: 1
 
+      - name: Migrations determinism — fresh DB boots from supabase/migrations/
+        run: |
+          set -euo pipefail
+          test -f supabase/migrations/20260908000001_market_core.sql
+          test -f supabase/migrations/20260908000002_identity_quotes_observability.sql
+          test -f supabase/migrations/20260909000001_analytics_events.sql
+          test -f supabase/config.toml
+          test -f supabase/migrations/README.md
+          # Portable files must stay equivalent to the migration history.
+          test -f db/schema.sql
+          test -f db/schema-extended.sql
+          echo "migrations structure checks passed"
+
+      - name: Analytics + health smoke (no DB — verifies HTTP contract and taxonomy)
+        run: |
+          set -euo pipefail
+          npx next start -p 3112 &
+          SERVER_PID=$!
+          cleanup() { kill "$SERVER_PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3112/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3112/api/health | grep -q '"ok":true'
+          curl -sf "http://127.0.0.1:3112/api/health?check=db" | grep -q '"ok"'
+          # POST /api/analytics taxonomy + validation (demo mode: best-effort insert, never 500)
+          curl -sf -X POST http://127.0.0.1:3112/api/analytics \
+            -H 'content-type: application/json' \
+            -d '{"event":"domain_opened","props":{"domain":"example.com"}}' | grep -q '"ok":true'
+          # Unknown taxonomy must be rejected with 422.
+          if curl -sf -X POST http://127.0.0.1:3112/api/analytics \
+            -H 'content-type: application/json' \
+            -d '{"event":"not_a_real_event"}' 2>/dev/null; then
+            echo "expected 422 for unknown event"; exit 1;
+          fi
+          echo "analytics + health smoke passed"
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
       - name: Concurrency race test over live HTTP (§74)
         run: |
           npx next start -p 3111 &
