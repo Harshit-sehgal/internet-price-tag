@@ -12,8 +12,11 @@ because they need accounts, credentials and a legal review.
 ## 1. Supabase (data + auth + realtime)
 
 1. Create a project at [supabase.com](https://supabase.com) (choose a region close to expected traffic).
-2. In **SQL Editor**, run `db/schema.sql` then `db/schema-extended.sql` in order.
-   - This creates tables, the `finalize_takeover` RPC (service-role only), RLS, and adds `domains`/`sales` to the `supabase_realtime` publication.
+2. Apply migrations deterministically — choose one path:
+   - **Supabase CLI (recommended):** `npx supabase db push` (applies `supabase/migrations/*` in order).
+   - **Plain SQL Editor / psql:** in **SQL Editor**, run `db/schema.sql` then `db/schema-extended.sql` in order, or `for f in supabase/migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done`.
+   - Either path creates the same tables, `finalize_takeover` RPC (service-role only), `analytics_events` sink, RLS, and `supabase_realtime` publication.
+   - `supabase/migrations/` is the versioned history; `db/*.sql` is the portable single-apply equivalent — keep them in sync (see `supabase/migrations/README.md`).
 3. **Authentication → Providers**: enable **Google** (needs an OAuth client from Google Cloud Console with redirect `https://<project-ref>.supabase.co/auth/v1/callback`) and **Email magic link** (disable confirm-signup captchas if you don't need them).
 4. **Authentication → URL Configuration**: set Site URL to your app origin and add `<origin>/auth/callback` to redirect URLs.
 5. Copy from **Project Settings → API**:
@@ -50,10 +53,16 @@ because they need accounts, credentials and a legal review.
    NEXT_PUBLIC_APP_URL=https://<your-domain>
    NEXT_PUBLIC_SUPABASE_URL=...
    NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-   SUPABASE_SERVICE_ROLE_KEY=...        # Production only
-   STRIPE_SECRET_KEY=...                # Production only
-   STRIPE_WEBHOOK_SECRET=...            # Production only
-   DEMO_WEBHOOK_SECRET=...              # Preview only, random string
+   SUPABASE_SERVICE_ROLE_KEY=...        # Server secret — separate values for Production/Preview
+   DODO_PAYMENTS_API_KEY=...            # Test key on Preview, live key on Production
+   DODO_PAYMENTS_MODE=test|live
+   DODO_PAYMENTS_PRODUCT_ID=...         # One-time PWYW product id
+   DODO_PAYMENTS_WEBHOOK_KEY=...        # Matching webhook secret per env
+   UPSTASH_REDIS_REST_URL=...           # Shared rate limiter (separate DBs per env ideally)
+   UPSTASH_REDIS_REST_TOKEN=...
+   NEXT_PUBLIC_TURNSTILE_SITE_KEY=...   # Optional, production bot protection
+   TURNSTILE_SECRET_KEY=...
+   DEMO_WEBHOOK_SECRET=...              # Demo only — unset/ignored when any provider or service-role key is set
    ```
 4. Deploy `main`. The preview environment runs in demo mode by default.
 
@@ -80,7 +89,14 @@ stale payment. **No unexplained payment states are permitted.**
   `takeover_finalization_error`) and wire alerts to the error-level ones.
 - Start with the closed beta (§77) before announcing publicly.
 
-## 7. Monitoring (item 9)
+## 7. Backups & recovery (production Supabase / Postgres)
+
+- **Enable** daily backups and Point-In-Time Recovery (PITR) in Supabase **Dashboard → Database → Backups**.
+- Keep at least 7 days of PITR window in production (verify via the dashboard after the first production sale).
+- **What is authoritative:** `sales` rows are the immutable ledger. `domains` can be rebuilt from sales; never rewrite sales to fix a bad state — append or operator-correct via `db/ops.sql` audit + reserved-domain/suspension actions.
+- **Restore procedure:** use Supabase's PITR restore to the last known-good timestamp, then verify `domains` vs `sales` consistency and that `finalize_takeover` still satisfies the in-memory race tests (`npm run test:concurrency`). Re-verify the webhook signing secret and `SUPABASE_SERVICE_ROLE_KEY` are unchanged after restore.
+
+## 8. Monitoring (item 9)
 
 All server logs are single-line JSON. Alert (Vercel Log Drains → Sentry or
 your alert tool) on any of these at level `error`:
@@ -95,6 +111,10 @@ your alert tool) on any of these at level `error`:
 Triage queries: filter by `payment_id`, `quote_id`, `event_id` — every event
 carries them. `payment_events.payload_hash` correlates retried deliveries.
 Never log raw webhook bodies or secrets; only hashes and ids.
+
+## 9. IDN / eligibility limits (V1)
+
+- V1 intentionally limits eligible suffixes to the `ALLOWED_SUFFIXES` allowlist in `src/lib/domains.ts` and **rejects IDN/punycode** (`xn--`) to avoid homograph/display ambiguity. Document this limit before launch; a future migration can add IDNA2008 + confusable analysis when ready.
 
 ## Operational notes
 

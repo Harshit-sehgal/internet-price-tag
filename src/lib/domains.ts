@@ -72,7 +72,8 @@ export type DomainEligibility = {
     | "ip_address"
     | "localhost"
     | "reserved"
-    | "suspended";
+    | "suspended"
+    | "idn_not_supported";
   canonicalDomain: string | null;
 };
 
@@ -93,6 +94,12 @@ export function evaluateDomain(input: string): DomainEligibility {
   const canonical = normalizeDomain(input);
   if (!canonical) return { eligible: false, reason: "empty", canonicalDomain: null };
   if (canonical.length > 253) return { eligible: false, reason: "too_long", canonicalDomain: canonical };
+  // V1 explicitly does not support IDN/punycode (homograph risk + display
+  // ambiguity). Reject non-ASCII inputs here so no punycode/homograph domain
+  // enters the ledger. A future migration can add IDNA2008 + confusable checks.
+  if (/[^\u0000-\u007F]/.test(canonical) || canonical.startsWith("xn--") || canonical.includes(".xn--")) {
+    return { eligible: false, reason: "idn_not_supported", canonicalDomain: canonical };
+  }
 
   if (looksLikeIp(canonical)) return { eligible: false, reason: "ip_address", canonicalDomain: canonical };
   if (canonical === "localhost" || canonical.endsWith(".localhost")) {

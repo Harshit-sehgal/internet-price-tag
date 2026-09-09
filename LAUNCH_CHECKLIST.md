@@ -42,7 +42,7 @@ Status legend — demo-mode tests passing is NOT production-done:
 - ✅ User suspension enforced at quote creation, checkout and finalization
 - ✅ Turnstile checkout validation (fail-closed when configured; pass-through in demo/CI)
 - ✅ Handle validation + impersonation blocklist + `HANDLE_TAKEN` race handling
-- 🟡 Domain policy review for gov/military/banks/edu/health/IDN/subdomains (item 15 — mechanism exists, decisions pending)
+- ✅ IDN/punycode (homograph) rejection + explicit V1 suffix-policy docs (DEPLOY.md §9); TLD allowlist remains the V1 explicit limit
 - 🔒 Turnstile widget creation + Dodo fraud tooling (owner)
 
 ## Trust
@@ -53,9 +53,10 @@ Status legend — demo-mode tests passing is NOT production-done:
 ## Reliability
 
 - ✅ Structured JSON logs for all §56 critical payment events + payload hashes (no secret logging)
-- ✅ CI runs lint, typecheck, unit, concurrency, browser and race tests on every push
-- 🟡 Alert rules documented (DEPLOY.md §7) but no alert destination wired yet
-- 🔒 Sentry/Vercel alerts + Supabase backups/PITR (owner settings)
+- ✅ CI runs lint, typecheck, unit, concurrency, browser and race tests on every push (migrations + analytics + `api/health` checked)
+- ✅ Versioned migrations in `supabase/migrations/` + portable `db/*.sql` (DEPLOY.md §1; `supabase/migrations/README.md`)
+- 🟡 Alert rules documented (DEPLOY.md §8) but no alert destination wired yet
+- 🔒 Sentry/Vercel alerts + Supabase backups/PITR (owner settings; recovery runbook in DEPLOY.md §7)
 
 ## Distribution
 
@@ -67,8 +68,8 @@ Status legend — demo-mode tests passing is NOT production-done:
 
 ## Analytics
 
-- 🟡 Event taxonomy + `track()` wrapper exist; sink is console-only
-- ❌ No analytics provider wired (item 22 funnel: takeover → share → visitor → challenger purchase unmeasured)
+- ✅ Persistent funnel sink: `analytics_events` table + `POST /api/analytics` (+ server `persistAnalyticsEvent`); `track()` best-effort mirrors there (no PII/secrets)
+- ✅ Taxonomy covers homepage_viewed → share_visit → challenger purchase funnel (item 22 measurable once infra has traffic)
 
 ## Owner gates remaining (in order)
 

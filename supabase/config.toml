@@ -1,0 +1,21 @@
+# Internet Price Tag — Supabase config.
+# The db/ directory is the portable truth (applies to any hosted Postgres).
+# This file makes `npx supabase` happy and documents how migrations are run.
+# Migrations live in supabase/migrations/ (versioned, deterministic).
+
+[api]
+enabled = true
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+major_version = 15
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_signup = true
+enable_confirmations = false
+enable_manual_linking = true
