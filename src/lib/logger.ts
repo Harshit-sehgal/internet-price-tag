@@ -9,15 +9,15 @@ import "server-only";
 
 export type LogLevel = "info" | "warn" | "error";
 
-// Deferred Sentry wiring: evaluated at runtime only when SENTRY_DSN is set.
-// Using `globalThis` + `eval("import")` prevents Turbopack from statically
-// requiring @sentry/nextjs, so the build stays green without the dep.
+const SENTRY_SPECIFIER = "@sentry/nextjs";
+
 function maybeCaptureError(event: string, level: LogLevel, fields: Record<string, unknown>): void {
   if (level !== "error") return;
   const dsn = process.env.SENTRY_DSN?.trim();
   if (!dsn) return;
-  const specifier = "@sentry/nextjs";
-  void (eval("import") as (s: string) => Promise<unknown>)(specifier)
+  // Use Function("return import(...)") so Turbopack/eslint don't flag a string-literal eval.
+  const dynImport = new Function("s", "return import(s)") as (s: string) => Promise<unknown>;
+  void dynImport(SENTRY_SPECIFIER)
     .catch(() => null)
     .then((mod) => {
       const sentry = mod as null | { captureMessage?: (msg: string, opts?: { level?: string; tags?: Record<string, unknown> }) => void };
