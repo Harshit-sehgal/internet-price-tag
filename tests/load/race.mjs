@@ -18,14 +18,6 @@
  */
 const BASE = process.argv[2] ?? "http://127.0.0.1:3111";
 const N = Number(process.argv[3] ?? 8);
-const enc = new TextEncoder();
-const key = await crypto.subtle.importKey(
-  "raw",
-  enc.encode("demo-webhook-secret"),
-  { name: "HMAC", hash: "SHA-256" },
-  false,
-  ["sign"],
-);
 
 function assert(cond, msg) {
   if (!cond) {
@@ -46,9 +38,12 @@ async function post(path, body, headers = {}) {
   return { status: res.status, json };
 }
 
+// Sign via the app's own demo signing route (the demo secret is no longer a
+// static constant; local dev generates a random per-process secret).
 async function sign(payload) {
-  const mac = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-  return Array.from(new Uint8Array(mac)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const res = await post("/api/demo/sign", { payload });
+  if (!res.json?.signature) throw new Error("demo sign route unavailable");
+  return res.json.signature;
 }
 
 // Retry a single request until it clears the rate limiter (429) or fails hard.

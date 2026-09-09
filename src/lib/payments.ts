@@ -3,6 +3,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { isProdDatastore } from "./repo.ts";
+import { demoWebhookSecret } from "./demo-secret.ts";
 
 export type CheckoutResult = {
   checkoutUrl: string | null;
@@ -54,7 +55,6 @@ export class ProviderNotConfiguredError extends Error {
  */
 class DemoProvider implements PaymentProvider {
   readonly name = "demo";
-  private secret = process.env.DEMO_WEBHOOK_SECRET || "demo-webhook-secret";
 
   async createCheckout(args: { quoteId: string; amountCents: number; domain: string; buyerUserId: string }): Promise<CheckoutResult> {
     const params = new URLSearchParams({
@@ -70,7 +70,7 @@ class DemoProvider implements PaymentProvider {
   }
 
   sign(payload: string): string {
-    return createHmac("sha256", this.secret).update(payload).digest("hex");
+    return createHmac("sha256", demoWebhookSecret()).update(payload).digest("hex");
   }
 
   verifyWebhook(payload: string, signature: string | null): WebhookVerification {
