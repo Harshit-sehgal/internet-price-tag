@@ -86,8 +86,8 @@ export async function processSucceededPayment(args: {
   if (args.paidCents != null && args.paidCents !== quote.nextPriceCents) {
     // Never apply a payment toward a different price (§50).
     logEvent("payment_amount_mismatch", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, paid_cents: args.paidCents, expected_cents: quote.nextPriceCents });
-    await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "amount_mismatch");
-    return { outcome: "failed", refunded: true, reason: "amount_mismatch" };
+    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "amount_mismatch");
+    return { outcome: "failed", refunded, reason: "amount_mismatch" };
   }
 
   const outcome: TakeoverOutcome = await finalizeTakeover({
@@ -138,9 +138,12 @@ export async function processSucceededPayment(args: {
     const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "finalize_error");
     return { outcome: "failed", refunded, reason: outcome.code };
   }
-  // IDEMPOTENCY_CONFLICT: critical alert condition (§56) — mismatched reuse of a payment id.
+  // IDEMPOTENCY_CONFLICT: critical alert condition (§56) — mismatched reuse
+  // of a payment id. Do NOT refund: the payment already funded its original
+  // sale, and refunding here would undo a legitimate takeover. Ack the webhook
+  // (caller returns 200) and alert for manual review.
   logEvent("takeover_finalization_error", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, code: outcome.code });
-  return { outcome: "failed", reason: outcome.code };
+  return { outcome: "failed", refunded: false, reason: outcome.code };
 }
 
 async function refundWithLog(

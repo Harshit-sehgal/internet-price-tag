@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getQuote, markQuoteStatus } from "@/lib/repo";
+import { getQuote, markQuoteStatus, setQuoteCheckout } from "@/lib/repo";
 import { getViewer, demoViewer } from "@/lib/auth";
 import { getPaymentProvider } from "@/lib/payments";
 import { verifyTurnstile } from "@/lib/turnstile";
@@ -69,6 +69,13 @@ export async function POST(req: Request) {
   // Reuse the profile just fetched above.
   const checkoutHandle = viewerProfile?.handle ?? `user_${user.id.slice(0, 8)}`;
 
+  // Idempotent retry: a double-click or network retry reuses the stored
+  // provider session instead of opening a second payment session.
+  if (quote.status === "checkout_created" && quote.checkoutPaymentId) {
+    track("checkout_started", { domain: quote.domain, reused: true });
+    return NextResponse.json({ checkoutUrl: quote.checkoutUrl, providerPaymentId: quote.checkoutPaymentId, reused: true });
+  }
+
   const provider = getPaymentProvider();
   const base = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
   try {
@@ -81,9 +88,15 @@ export async function POST(req: Request) {
       successUrl: `${base}/checkout/return?quote_id=${quote.id}`,
       cancelUrl: `${base}/domain/${quote.domain}?checkout=cancelled`,
     });
-    await markQuoteStatus(quote.id, "checkout_created");
-    track("checkout_started", { domain: quote.domain, provider: provider.name });
-    return NextResponse.json({ checkoutUrl: checkout.checkoutUrl, providerPaymentId: checkout.providerPaymentId });
+    // First writer wins — a concurrent second request reuses this session.
+    const stored = await setQuoteCheckout({
+      quoteId: quote.id,
+      provider: provider.name,
+      paymentId: checkout.providerPaymentId,
+      checkoutUrl: checkout.checkoutUrl,
+    });
+    track("checkout_started", { domain: quote.domain, provider: provider.name, reused: stored.reused });
+    return NextResponse.json({ checkoutUrl: stored.checkoutUrl, providerPaymentId: stored.paymentId, reused: stored.reused });
   } catch (e) {
     return NextResponse.json(
       { error: "checkout_failed", detail: e instanceof Error ? e.message : String(e) },

@@ -28,7 +28,11 @@ create table if not exists public.quotes (
   expires_at timestamptz not null,
   status text not null default 'active'
     check (status in ('active','checkout_created','consumed','expired','stale','cancelled')),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Idempotent checkout: one quote reuses one provider session on retry.
+  checkout_provider text,
+  checkout_payment_id text,
+  checkout_url text
 );
 
 create index if not exists quotes_buyer_idx on public.quotes(buyer_user_id, created_at desc);

@@ -49,6 +49,11 @@ export type RepoQuote = {
   expiresAt: string;
   status: string;
   createdAt: string;
+  // Idempotent checkout reuse: one quote maps to at most one provider session.
+  // Null until the first successful POST /api/checkout for this quote.
+  checkoutProvider: string | null;
+  checkoutPaymentId: string | null;
+  checkoutUrl: string | null;
 };
 
 export type TakeoverOutcome =
@@ -105,6 +110,9 @@ function toQuote(row: Record<string, unknown>): RepoQuote {
     expiresAt: String(row.expires_at),
     status: String(row.status),
     createdAt: String(row.created_at),
+    checkoutProvider: row.checkout_provider == null ? null : String(row.checkout_provider),
+    checkoutPaymentId: row.checkout_payment_id == null ? null : String(row.checkout_payment_id),
+    checkoutUrl: row.checkout_url == null ? null : String(row.checkout_url),
   };
 }
 
@@ -366,6 +374,9 @@ export async function createQuote(domainInput: string, buyerUserId: string): Pro
     expiresAt,
     status: "active",
     createdAt: now.toISOString(),
+    checkoutProvider: null,
+    checkoutPaymentId: null,
+    checkoutUrl: null,
   };
   mem().quotes.set(id, quote);
   return quote;
@@ -387,6 +398,64 @@ export async function markQuoteStatus(quoteId: string, status: RepoQuote["status
   }
   const { error } = await client().from("quotes").update({ status }).eq("id", quoteId);
   if (error) throw error;
+}
+
+/**
+ * Persist the provider session for a quote so retries reuse one checkout.
+ * First writer wins: a concurrent second checkout for the same quote reuses
+ * the stored session instead of creating a second payment session.
+ * Returns the authoritative (existing-or-newly-stored) checkout triple.
+ */
+export async function setQuoteCheckout(args: {
+  quoteId: string;
+  provider: string;
+  paymentId: string;
+  checkoutUrl: string | null;
+}): Promise<{ paymentId: string; checkoutUrl: string | null; reused: boolean }> {
+  if (!isProdDatastore) {
+    const q = mem().quotes.get(args.quoteId);
+    if (!q) throw new Error("UNKNOWN_QUOTE");
+    if (q.checkoutPaymentId) {
+      return { paymentId: q.checkoutPaymentId, checkoutUrl: q.checkoutUrl, reused: true };
+    }
+    q.checkoutProvider = args.provider;
+    q.checkoutPaymentId = args.paymentId;
+    q.checkoutUrl = args.checkoutUrl;
+    if (q.status === "active") q.status = "checkout_created";
+    return { paymentId: args.paymentId, checkoutUrl: args.checkoutUrl, reused: false };
+  }
+  // Claim the row only if no checkout was stored yet (atomic first-writer-wins).
+  const { data: claimed, error: claimErr } = await client()
+    .from("quotes")
+    .update({
+      checkout_provider: args.provider,
+      checkout_payment_id: args.paymentId,
+      checkout_url: args.checkoutUrl,
+      status: "checkout_created",
+    })
+    .is("checkout_payment_id", null)
+    .eq("id", args.quoteId)
+    .select("checkout_payment_id, checkout_url");
+  if (claimErr) throw claimErr;
+  const row = (claimed ?? [])[0] as { checkout_payment_id: string; checkout_url: string | null } | undefined;
+  if (row?.checkout_payment_id) {
+    const reused = row.checkout_payment_id !== args.paymentId;
+    return { paymentId: row.checkout_payment_id, checkoutUrl: row.checkout_url, reused };
+  }
+  // Lost the race (or the column is missing on an old DB): read the winner.
+  const current = await getQuote(args.quoteId);
+  if (current?.checkoutPaymentId) {
+    return { paymentId: current.checkoutPaymentId, checkoutUrl: current.checkoutUrl, reused: true };
+  }
+  // Column missing (migration not applied): fall back to the just-created
+  // session rather than failing checkout. The quote status was still advanced
+  // by the update above if the column exists; ensure it here for old schemas.
+  try {
+    await markQuoteStatus(args.quoteId, "checkout_created");
+  } catch {
+    // Status write failing must not fail a valid checkout creation.
+  }
+  return { paymentId: args.paymentId, checkoutUrl: args.checkoutUrl, reused: false };
 }
 
 // --------------------------------------------------------------- finalization
