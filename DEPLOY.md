@@ -80,6 +80,22 @@ stale payment. **No unexplained payment states are permitted.**
   `takeover_finalization_error`) and wire alerts to the error-level ones.
 - Start with the closed beta (§77) before announcing publicly.
 
+## 7. Monitoring (item 9)
+
+All server logs are single-line JSON. Alert (Vercel Log Drains → Sentry or
+your alert tool) on any of these at level `error`:
+
+- `refund_failed` — money needs manual review; the payment was NOT applied.
+- `takeover_finalization_error` — includes `IDEMPOTENCY_CONFLICT` (payment-id
+  reuse, never auto-refunded) and other finalizer failures.
+- `webhook_store_failed` / `webhook_processing_failed` — webhook returned 500
+  and the provider will retry; investigate if repeated.
+- `webhook_signature_invalid` spikes — possible misconfigured secret or abuse.
+
+Triage queries: filter by `payment_id`, `quote_id`, `event_id` — every event
+carries them. `payment_events.payload_hash` correlates retried deliveries.
+Never log raw webhook bodies or secrets; only hashes and ids.
+
 ## Operational notes
 
 - Suspended users are blocked at quote creation and at finalization

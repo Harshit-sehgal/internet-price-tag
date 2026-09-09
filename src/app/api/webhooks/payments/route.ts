@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { recordPaymentEvent, markPaymentEventStatus } from "@/lib/repo";
 import { getPaymentProvider } from "@/lib/payments";
 import { processSucceededPayment } from "@/lib/takeover";
@@ -44,12 +45,16 @@ export async function POST(req: Request) {
   // Event-level idempotency: duplicate deliveries are recorded once.
   // ONLY a unique violation means "already seen". Any other DB error is a
   // real failure and must return 500 so the provider retries.
+  // payloadHash (SHA-256, no secrets) lets operators correlate retries and
+  // detect tampered replays without ever storing full payment payloads.
+  const payloadHash = createHash("sha256").update(raw, "utf8").digest("hex");
   try {
     await recordPaymentEvent({
       provider: provider.name,
       providerEventId: event.id,
       providerPaymentId: event.paymentId,
       eventType: event.type,
+      payloadHash,
       status: "received",
     });
   } catch (e) {
