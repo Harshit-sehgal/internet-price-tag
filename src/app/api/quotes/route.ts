@@ -27,8 +27,9 @@ export async function POST(req: Request) {
 
   if (!user) return NextResponse.json({ error: "login_required" }, { status: 401 });
 
-  const rl = rateLimit(`quote:${user.id}`, 10, 60_000) && rateLimit(`quote:ip:${ip}`, 20, 60_000);
-  if (!rl) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  const rlUser = await rateLimit(`quote:${user.id}`, 10, 60_000);
+  const rlIp = await rateLimit(`quote:ip:${ip}`, 20, 60_000);
+  if (!rlUser || !rlIp) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
 
   let domain: string | undefined;
   try {

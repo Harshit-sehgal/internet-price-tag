@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   if (process.env.DODO_PAYMENTS_API_KEY || process.env.STRIPE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: "not_available" }, { status: 404 });
   }
-  if (!rateLimit(`demo-sign:ip:${ip}`, 30, 60_000)) {
+  if (!(await rateLimit(`demo-sign:ip:${ip}`, 30, 60_000))) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 

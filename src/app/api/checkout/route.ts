@@ -26,8 +26,9 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "login_required" }, { status: 401 });
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const rl = rateLimit(`checkout:${user.id}`, 6, 60_000) && rateLimit(`checkout:ip:${ip}`, 12, 60_000);
-  if (!rl) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  const rlUser = await rateLimit(`checkout:${user.id}`, 6, 60_000);
+  const rlIp = await rateLimit(`checkout:ip:${ip}`, 12, 60_000);
+  if (!rlUser || !rlIp) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
 
   // Suspended buyers can still reach this endpoint after the quote was created;
   // enforce here too so the provider never receives a tainted checkout.

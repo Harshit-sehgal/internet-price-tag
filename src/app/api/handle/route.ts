@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   }
   if (!user) return NextResponse.json({ error: "login_required" }, { status: 401 });
 
-  if (!rateLimit(`handle:${user.id}`, 5, 60_000)) {
+  if (!(await rateLimit(`handle:${user.id}`, 5, 60_000))) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
