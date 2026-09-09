@@ -21,19 +21,24 @@ because they need accounts, credentials and a legal review.
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY` (server secret — never expose to the browser)
 
-## 2. Stripe (payments)
+## 2. Dodo Payments (launch provider)
 
 1. Verify your business/account can go live for this product type. Confirm the
-   symbolic-status product is permitted under Stripe's restricted businesses
+   symbolic-status product is permitted under Dodo's restricted businesses
    list and local law (plan §21). If anything is unclear, get written
    confirmation or consult a lawyer before proceeding.
-2. Create the product/checkout **after** enabling payments on the account.
-3. Copy from **Developers → API keys**:
-   - `STRIPE_SECRET_KEY`
+2. Create a **one-time product with Pay-What-You-Want enabled** (min $5.00,
+   no low max — each quote passes its exact next price as the cart `amount`).
+   Copy its product id → `DODO_PAYMENTS_PRODUCT_ID`.
+3. Copy from the Dodo dashboard:
+   - `DODO_PAYMENTS_API_KEY` (test key first, live key later — never mix)
+   - `DODO_PAYMENTS_MODE=test` (preview) / `live` (production)
    - Webhook secret: add an endpoint `https://<your-domain>/api/webhooks/payments`
-     subscribed to `payment_intent.succeeded` and `payment_intent.payment_failed`,
-     then copy `STRIPE_WEBHOOK_SECRET`.
-4. Use test keys first; run the §76 sandbox gate (below) before switching live.
+     subscribed to `payment.succeeded`, `payment.failed`, `payment.cancelled`,
+     then copy `DODO_PAYMENTS_WEBHOOK_KEY`.
+4. Use test credentials first; run the §76 sandbox gate (below) before switching live.
+5. Stripe remains only as an optional adapter (`STRIPE_*` keys) for experiments —
+   when both are set, Dodo wins.
 
 ## 3. Vercel (hosting)
 
@@ -54,7 +59,7 @@ because they need accounts, credentials and a legal review.
 
 ## 4. Sandbox payment gate (§76)
 
-On a preview deployment with Stripe **test** keys, run and record results for:
+On a preview deployment with Dodo **test** credentials, run and record results for:
 successful payment, failed payment, cancelled checkout, duplicate webhook
 delivery (replay the same event), stale quote (take the domain from another
 session before paying), simultaneous checkout from two sessions, refund of a
@@ -69,7 +74,7 @@ stale payment. **No unexplained payment states are permitted.**
 
 ## 6. Flip to live
 
-- Switch Stripe to live keys, update the webhook endpoint secret.
+- Switch Dodo to live mode keys, update the webhook endpoint secret.
 - Watch the Vercel logs for the structured events from §56
   (`takeover_succeeded`, `payment_succeeded_takeover_stale`, `refund_failed`,
   `takeover_finalization_error`) and wire alerts to the error-level ones.

@@ -20,12 +20,13 @@ repo. 🔒 = owner-gated, no code remaining. Detailed steps: [DEPLOY.md](./DEPLO
 
 ## Payments
 
-- ✅ Provider abstraction with Stripe implementation (authorize→capture preferred; charge+refund fallback)
-- ✅ Live checkout path, signed webhook, idempotency at event AND payment level
-- ✅ Refund/void path for stale quotes; never re-applied to another price (§50)
+- ✅ Provider abstraction with Dodo implementation (launch default; charge+refund fallback) + Stripe kept as optional adapter
+- ✅ Live checkout path, signed webhook (Standard Webhooks verification), idempotency at event AND payment level
+- ✅ Refund path for stale quotes; never re-applied to another price (§50)
 - ✅ Duplicate-event handling verified by tests and race test
-- 🔒 Live Stripe keys + webhook secret in Vercel (owner, after §21 permission check)
-- 🔒 §76 sandbox gate executed on a preview deployment (owner runbook)
+- 🟡 Webhook retry contract hardened in code (unique-violation-only dedupe, 500-on-DB-failure, idempotent checkout) — needs production verification against real Supabase + Dodo sandbox
+- 🔒 Live Dodo keys + webhook secret + PWYW product id in Vercel (owner, after §21 permission check)
+- 🔒 §76 sandbox gate executed on a preview deployment with Dodo test credentials (owner runbook)
 
 ## Safety
 
@@ -36,7 +37,7 @@ repo. 🔒 = owner-gated, no code remaining. Detailed steps: [DEPLOY.md](./DEPLO
   open-redirect guard, RLS lockdown (clients read-only), no service keys client-side
 - ✅ Basic bot protection: optional Cloudflare Turnstile (invisible) on checkout —
   server fail-closed when configured, pass-through in demo/CI; unit-tested
-- 🔒 Payment-provider fraud tooling enabled in the Stripe dashboard (owner)
+- 🔒 Payment-provider fraud tooling enabled in the Dodo dashboard (owner)
 
 ## Trust
 
@@ -62,7 +63,7 @@ repo. 🔒 = owner-gated, no code remaining. Detailed steps: [DEPLOY.md](./DEPLO
 ## Owner gates remaining (in order)
 
 1. Supabase project + schema + auth providers (DEPLOY.md §1)
-2. Stripe permission check → live keys + webhook (DEPLOY.md §2)
+2. Dodo permission check → live keys + webhook + PWYW product (DEPLOY.md §2)
 3. Vercel deploy with env separation (DEPLOY.md §3)
 4. §76 sandbox payment gate on preview (DEPLOY.md §4)
 5. Legal review of policy pages and checkout language

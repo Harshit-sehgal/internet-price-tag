@@ -29,7 +29,11 @@ export async function POST(req: Request) {
     req.headers.get("x-demo-signature") ??
     null;
 
-  const verification = provider.verifyWebhook(raw, signature);
+  // Standard Webhooks (Dodo) carries the event id + timestamp as headers.
+  const verification = provider.verifyWebhook(raw, signature, {
+    webhookId: req.headers.get("webhook-id"),
+    webhookTimestamp: req.headers.get("webhook-timestamp"),
+  });
   if (!verification.ok) {
     logEvent("webhook_signature_invalid", "warn", { provider: provider.name, reason: verification.reason });
     return Response.json({ error: "invalid_signature", reason: verification.reason }, { status: 400 });

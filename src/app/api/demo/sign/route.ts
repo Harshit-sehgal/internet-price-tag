@@ -6,9 +6,10 @@ export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 
   // Demo-only endpoint: disabled in any production-like environment.
-  // Stripe presence implies real money; isProdDatastore (Supabase service key)
-  // would otherwise leave a signing oracle available to abuse the webhook.
-  if (process.env.STRIPE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  // A configured payment provider implies real money; isProdDatastore
+  // (Supabase service key) would otherwise leave a signing oracle available
+  // to abuse the webhook.
+  if (process.env.DODO_PAYMENTS_API_KEY || process.env.STRIPE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: "not_available" }, { status: 404 });
   }
   if (!rateLimit(`demo-sign:ip:${ip}`, 30, 60_000)) {

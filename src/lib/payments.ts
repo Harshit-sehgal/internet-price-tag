@@ -21,6 +21,11 @@ export type ProviderEvent = {
   status: "succeeded" | "failed" | "refunded" | "other";
 };
 
+export type WebhookVerifyHeaders = {
+  webhookId?: string | null;
+  webhookTimestamp?: string | null;
+};
+
 export interface PaymentProvider {
   readonly name: string;
   createCheckout(args: {
@@ -32,7 +37,7 @@ export interface PaymentProvider {
     successUrl: string;
     cancelUrl: string;
   }): Promise<CheckoutResult>;
-  verifyWebhook(payload: string, signature: string | null): WebhookVerification;
+  verifyWebhook(payload: string, signature: string | null, headers?: WebhookVerifyHeaders): WebhookVerification;
   refundPayment(paymentId: string, reason: string): Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -260,9 +265,227 @@ function verifyStripeWebhookSync(payload: string, signature: string, secret: str
   }
 }
 
+// -------------------------------------------------------------- dodo provider
+/**
+ * Dodo Payments — the launch provider.
+ *
+ * One-time dynamic pricing via a single Pay-What-You-Want product
+ * (DODO_PAYMENTS_PRODUCT_ID): each quote passes its exact next price as
+ * `product_cart[0].amount` in minor units, so no per-domain product is needed.
+ * Webhooks follow the Standard Webhooks spec
+ * (webhook-id / webhook-timestamp / webhook-signature headers, HMAC-SHA256
+ * over "<id>.<timestamp>.<raw body>").
+ */
+export class DodoPaymentsProvider implements PaymentProvider {
+  readonly name = "dodo";
+
+  private get apiKey(): string {
+    const key = process.env.DODO_PAYMENTS_API_KEY;
+    if (!key) throw new ProviderNotConfiguredError("dodo");
+    return key;
+  }
+
+  private get baseUrl(): string {
+    const override = process.env.DODO_PAYMENTS_BASE_URL?.trim();
+    if (override) return override.replace(/\/+$/, "");
+    const mode = (process.env.DODO_PAYMENTS_MODE ?? "test").toLowerCase();
+    return mode === "live" ? "https://live.dodopayments.com" : "https://test.dodopayments.com";
+  }
+
+  private get productId(): string {
+    const id = process.env.DODO_PAYMENTS_PRODUCT_ID?.trim();
+    if (!id) throw new Error("DODO_PRODUCT_NOT_CONFIGURED: create a Pay-What-You-Want one-time product and set DODO_PAYMENTS_PRODUCT_ID");
+    return id;
+  }
+
+  async createCheckout(args: {
+    quoteId: string;
+    domain: string;
+    buyerUserId: string;
+    buyerHandle: string;
+    amountCents: number;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<CheckoutResult> {
+    // Dodo uses a single return_url for success/failure/cancel and appends
+    // ?payment_id=&status= — the webhook (never the redirect) finalizes.
+    const res = await fetch(`${this.baseUrl}/checkouts`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        product_cart: [{ product_id: this.productId, quantity: 1, amount: args.amountCents }],
+        return_url: args.successUrl,
+        billing_currency: process.env.DODO_PAYMENTS_CURRENCY?.trim() || "USD",
+        metadata: {
+          quote_id: args.quoteId,
+          domain: args.domain,
+          buyer_user_id: args.buyerUserId,
+          buyer_handle: args.buyerHandle,
+          amount_cents: String(args.amountCents),
+        },
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`DODO_CHECKOUT_FAILED: http ${res.status} ${detail.slice(0, 300)}`);
+    }
+    const session = (await res.json()) as { session_id?: string; checkout_url?: string | null };
+    if (!session.session_id) throw new Error("DODO_CHECKOUT_FAILED: missing session_id");
+    return { checkoutUrl: session.checkout_url ?? null, providerPaymentId: session.session_id, mode: "charge" };
+  }
+
+  verifyWebhook(payload: string, signature: string | null, headers?: WebhookVerifyHeaders): WebhookVerification {
+    const secret = process.env.DODO_PAYMENTS_WEBHOOK_KEY;
+    if (!secret) return { ok: false, reason: "webhook_secret_missing" };
+    return verifyDodoWebhookSync(payload, signature, headers?.webhookId ?? null, headers?.webhookTimestamp ?? null, secret);
+  }
+
+  async refundPayment(paymentId: string, reason: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch(`${this.baseUrl}/refunds`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({ payment_id: paymentId, reason: reason.slice(0, 500) }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        return { ok: false, error: `dodo refund http ${res.status}: ${detail.slice(0, 300)}` };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+}
+
+function dodoWebhookKeyBytes(secret: string): Buffer {
+  // Dodo issues Standard-Webhooks secrets, commonly "whsec_<base64>".
+  const stripped = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret;
+  try {
+    const decoded = Buffer.from(stripped, "base64");
+    // Only use the decoded form if it round-trips (i.e. it really was base64).
+    if (decoded.length >= 16 && decoded.toString("base64").replace(/=+$/, "") === stripped.replace(/=+$/, "")) {
+      return decoded;
+    }
+  } catch {
+    // Fall through to raw bytes.
+  }
+  return Buffer.from(secret, "utf8");
+}
+
+function verifyDodoWebhookSync(
+  payload: string,
+  signature: string | null,
+  webhookId: string | null,
+  webhookTimestamp: string | null,
+  secret: string,
+): WebhookVerification {
+  if (!signature) return { ok: false, reason: "missing_signature" };
+  if (!webhookId) return { ok: false, reason: "missing_webhook_id" };
+  if (!webhookTimestamp) return { ok: false, reason: "missing_webhook_timestamp" };
+  const ts = Number(webhookTimestamp);
+  if (!Number.isFinite(ts)) return { ok: false, reason: "malformed_timestamp" };
+  const ageSec = Math.abs(Date.now() / 1000 - ts);
+  if (ageSec > 60 * 10) return { ok: false, reason: "stale_timestamp" };
+
+  // Standard Webhooks: one or more space/comma-separated "v1,<base64>" entries.
+  const candidates = signature
+    .split(/[\s,]+/)
+    .map((part) => part.replace(/^v1[=:]/, "").trim())
+    .filter(Boolean);
+  if (candidates.length === 0) return { ok: false, reason: "malformed_signature" };
+  const signedContent = `${webhookId}.${webhookTimestamp}.${payload}`;
+  const expected = createHmac("sha256", dodoWebhookKeyBytes(secret)).update(signedContent, "utf8").digest("base64");
+  const matched = candidates.some((candidate) => {
+    const a = Buffer.from(candidate);
+    const b = Buffer.from(expected);
+    return a.length === b.length && timingSafeEqual(a, b);
+  });
+  if (!matched) return { ok: false, reason: "invalid_signature" };
+
+  try {
+    const body = JSON.parse(payload) as {
+      business_id?: string;
+      id?: string;
+      type?: string;
+      timestamp?: string;
+      data?: Record<string, unknown> & {
+        payload_type?: string;
+        payment_id?: unknown;
+        id?: unknown;
+        metadata?: unknown;
+        total_amount?: unknown;
+        amount?: unknown;
+      };
+    };
+    const type = typeof body.type === "string" ? body.type : "";
+    if (!type) return { ok: false, reason: "missing_event_type" };
+    const data = body.data ?? {};
+
+    const status: ProviderEvent["status"] =
+      type === "payment.succeeded"
+        ? "succeeded"
+        : type === "payment.failed" || type === "payment.cancelled"
+          ? "failed"
+          : type.startsWith("refund.")
+            ? "refunded"
+            : "other";
+
+    const paymentId =
+      (typeof data.payment_id === "string" && data.payment_id) ||
+      (typeof data.id === "string" && data.id) ||
+      "";
+    // payment.failed may arrive without a payment object in edge cases;
+    // failed/other events are observability-only, so allow empty payment id.
+    // Succeeded events must carry one — otherwise finalization is impossible.
+    if (!paymentId && status === "succeeded") return { ok: false, reason: "missing_payment_id" };
+
+    const meta = (data.metadata ?? {}) as Record<string, unknown>;
+    const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+    const quoteId = str(meta.quote_id);
+    const metaCents = Number(meta.amount_cents);
+    const totalCents =
+      typeof data.total_amount === "number"
+        ? data.total_amount
+        : typeof data.amount === "number"
+          ? data.amount
+          : null;
+    const amountCents =
+      Number.isFinite(metaCents) && metaCents > 0 ? metaCents : (totalCents ?? null);
+
+    return {
+      ok: true,
+      event: {
+        id: webhookId,
+        type,
+        paymentId,
+        quoteId,
+        amountCents,
+        status,
+      },
+    };
+  } catch {
+    return { ok: false, reason: "invalid_payload" };
+  }
+}
+
 // ------------------------------------------------------------------- factory
 export function getPaymentProvider(): PaymentProvider {
+  // Dodo is the launch default; Stripe stays as an optional adapter.
+  if (process.env.DODO_PAYMENTS_API_KEY) return new DodoPaymentsProvider();
   if (process.env.STRIPE_SECRET_KEY) return new StripeProvider();
-  if (isProdDatastore) throw new ProviderNotConfiguredError("stripe");
+  if (isProdDatastore) throw new ProviderNotConfiguredError("dodo");
   return new DemoProvider();
+}
+
+export function getConfiguredProviderName(): "dodo" | "stripe" | "demo" {
+  if (process.env.DODO_PAYMENTS_API_KEY) return "dodo";
+  if (process.env.STRIPE_SECRET_KEY) return "stripe";
+  return "demo";
 }
