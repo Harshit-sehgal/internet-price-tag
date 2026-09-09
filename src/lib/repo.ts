@@ -228,20 +228,52 @@ export async function listMostContested(limit = 6): Promise<Array<{ domain: stri
     .map(([domain]) => domain);
   if (domains.length === 0) return [];
 
-  const rows = await Promise.all(domains.map((d) => getDomain(d)));
   // Reserved domains must not surface in discovery (§7/§38) even if they have
-  // history — evaluate static blocklist synchronously and DB list async.
+  // history. Static blocklist is synchronous; the DB list is one batched read.
   const { evaluateDomain } = await import("./domains.ts");
-  const reservedFlags = await Promise.all(
-    domains.map(async (d) => evaluateDomain(d).reason === "reserved" || (isProdDatastore ? await isReservedInDb(d) : false)),
+  const dbReserved = isProdDatastore ? await listReservedInDb(domains) : new Set<string>();
+  const live = domains.filter(
+    (domain) => evaluateDomain(domain).reason !== "reserved" && !dbReserved.has(domain),
   );
-  return domains.flatMap((domain, i) => {
-    if (reservedFlags[i]) return [];
-    const row = rows[i];
-    return row && row.holderUserId
-      ? [{ domain, sales: counts.get(domain)?.count ?? 0, priceCents: row.priceCents, holderHandle: row.holderHandle! }]
+
+  // Batched fetch of live market state — one query instead of one per domain.
+  const rows = await listDomainsByNames(live);
+  return live.flatMap((domain) => {
+    const row = rows.get(domain);
+    const count = counts.get(domain)?.count ?? 0;
+    return row && row.holderUserId && row.holderHandle
+      ? [{ domain, sales: count, priceCents: row.priceCents, holderHandle: row.holderHandle }]
       : [];
   });
+}
+
+/** Batched reserved-domain lookup (one query for a domain set). */
+async function listReservedInDb(domains: string[]): Promise<Set<string>> {
+  if (!isProdDatastore || domains.length === 0) return new Set();
+  try {
+    const { data } = await client().from("reserved_domains").select("domain").in("domain", domains);
+    return new Set((data ?? []).map((row) => String(row.domain)));
+  } catch {
+    // If the reserved_domains table is missing, fail open but log.
+    return new Set();
+  }
+}
+
+/** One batched read for live domain rows (replaces per-domain getDomain N+1). */
+async function listDomainsByNames(domains: string[]): Promise<Map<string, RepoDomain>> {
+  if (domains.length === 0) return new Map();
+  if (!isProdDatastore) {
+    const m = mem();
+    return new Map(domains.map((d) => [d, m.domains.get(d) ?? null]).filter(([, v]) => v !== null) as Array<[string, RepoDomain]>);
+  }
+  const { data, error } = await client().from("domains").select("*").in("domain", domains);
+  if (error) throw error;
+  const out = new Map<string, RepoDomain>();
+  for (const row of data ?? []) {
+    const d = toDomain(row);
+    out.set(d.domain, d);
+  }
+  return out;
 }
 
 export async function listRecentSales(limit = 20): Promise<RepoSale[]> {
