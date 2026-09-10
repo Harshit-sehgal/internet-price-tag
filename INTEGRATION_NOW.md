@@ -27,6 +27,7 @@ This file is the current authority for the next execution phase and overrides ol
 - The stable Production environment has `NEXT_PUBLIC_APP_URL`, the three Supabase variables, the four Dodo Test Mode variables, and the two Upstash Redis variables configured. Ordinary Preview deployments remain demo-only and do not receive privileged credentials.
 - Supabase Site URL is `https://internet-price-tag.vercel.app` and the `/auth/callback` redirect is configured. Google Auth Platform branding and a Web OAuth client are configured for `Priced`; Supabase Google sign-in is enabled, and a real browser login returned through the callback to Priced's welcome/handle setup page.
 - Dodo Test Mode contains the approved `Priced Takeover` Pay What You Want product with a $5 minimum and a signed webhook endpoint at `https://internet-price-tag.vercel.app/api/webhooks/payments`. No live mode or real-money configuration has been enabled.
+- The Dodo webhook endpoint is enabled and filtered to `payment.succeeded`, `payment.failed`, and `payment.cancelled`, matching the current Dodo event catalog. No delivery attempts have been generated yet because the real sandbox transaction matrix is still pending authenticated handle setup.
 - Production liveness and Supabase readiness checks pass: `/api/health` returns `ok: true`, and `/api/health?check=db` returns `datastore: supabase` and `db: ok`.
 - A new free-tier Upstash account was checked and its designated `priced-beta-redis` database was created in N. California (`us-west-1`). The existing `promptpay-staging-redis` database in the other account was left untouched. Its REST URL and write token are configured only in Vercel Production, and a fresh Production deployment completed successfully.
 - Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
@@ -61,7 +62,7 @@ Do not create paid infrastructure without explicit owner approval.
 2. Create or reuse the approved Single Payment Pay What You Want product with minimum $5. **Implemented.**
 3. Configure `DODO_PAYMENTS_API_KEY`, `DODO_PAYMENTS_MODE=test`, `DODO_PAYMENTS_PRODUCT_ID`, and `DODO_PAYMENTS_WEBHOOK_KEY` in the designated beta environment only. **Implemented.**
 4. Configure the signed webhook endpoint at `https://<stable-beta-origin>/api/webhooks/payments`. **Implemented.**
-5. Verify event names and payload fields against current Dodo docs before changing code.
+5. Verify event names and payload fields against current Dodo docs before changing code. **Implemented**: the current Dodo event catalog lists `payment.succeeded`, `payment.failed`, and `payment.cancelled`, and the endpoint is filtered to those three events.
 6. Run real signed sandbox transactions and the full payment-state matrix. **Owner blocked** until the authenticated beta login path is available.
 7. Validate stale quote refunds, wrong-amount refunds, idempotency, duplicate webhooks, retries, simultaneous challengers, provider failure, and refund failure.
 8. Do not enable live mode until the complete integration gate is green.
@@ -70,7 +71,7 @@ Do not create paid infrastructure without explicit owner approval.
 
 1. Create one free Upstash Redis database for the designated beta environment. **Implemented** (`priced-beta-redis`, Free Tier, `us-west-1`).
 2. Configure the REST URL/token only in that environment. **Implemented** in Vercel Production; the token is stored as a Secret and the URL as a Config variable.
-3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances. **Pending** authenticated hosted exercise.
+3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances. **Partially verified**: the authenticated Production `/api/handle` burst returned `429 rate_limited` after the configured limit with no 5xx; the full matrix is pending permanent handle setup.
 4. Use free logs and free uptime checks initially.
 5. Check `/api/health` and `/api/health?check=db`.
 6. Watch structured critical events during sandbox testing.
