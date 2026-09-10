@@ -51,7 +51,7 @@ Nothing is marked beyond the level actually evidenced.
 | Real-Postgres RPC concurrency (10 + 25 racers) | Locally verified (docker postgres:16); staging pending | `npm run test:pg` — 10/10 pass incl. `holder_analytics` RPC aggregation test |
 | Upstash Redis + distributed rate limits | Owner blocked (code CI-verified) | `tests/integration/ratelimit.test.ts`; fail-closed verified; A4 needs the actual DB |
 | Vercel project rename `internet-price-tag` → `priced` | Implemented | Existing project renamed through the authenticated Vercel CLI; project id preserved and production alias remains `https://internet-price-tag.vercel.app` |
-| Env separation (Local/Preview/Production) | Owner blocked | Matrix in `.env.example`; designated beta env is still empty and must not receive secrets in ordinary previews |
+| Env separation (Local/Preview/Production) | Owner blocked | Matrix in `.env.example`; only the non-sensitive Production `NEXT_PUBLIC_APP_URL` is configured, while privileged beta secrets remain absent from ordinary previews |
 | Monitoring/alerts (error-event list, uptime, 5xx rate) | Implemented (docs + structured logs); wiring owner blocked | DEPLOY.md §8: exact log-drain queries + uptime endpoints; A8 wires destinations |
 | Health endpoint (liveness + `?check=db` readiness) | CI verified | `tests/integration/health-analytics.test.ts` + CI smoke step |
 
@@ -98,7 +98,7 @@ Nothing is marked beyond the level actually evidenced.
 ## Owner gates remaining (in order — exact actions in DEPLOY.md)
 
 1. **Supabase/Auth** (§1): sign in to the existing Priced project, verify Google + magic-link auth, configure Site URL/redirects, verify Realtime, and copy the three env keys.
-2. **Upstash** (§3/A4): create Redis DBs (staging + prod), set `UPSTASH_REDIS_REST_URL/TOKEN` per Vercel env.
+2. **Upstash** (§3/A4): create one free Redis database for the designated beta environment, set `UPSTASH_REDIS_REST_URL/TOKEN` there, and keep ordinary previews secret-free.
 3. **Dodo** (§2/A5): obtain test credentials, create/reuse the approved PWYW one-time product, and configure `DODO_PAYMENTS_PRODUCT_ID` + `DODO_PAYMENTS_WEBHOOK_KEY` for the stable beta endpoint.
 4. **Vercel** (§3): configure the designated beta environment on the existing `priced` project; no custom domain is required for sandbox.
 5. **Sandbox gate** (§4/B1): on preview with test keys run the full Dodo matrix + `npm run test:postgres` against real Supabase + `npm run smoke:staging`.

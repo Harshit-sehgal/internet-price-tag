@@ -53,7 +53,7 @@ integration, dockerized real-Postgres RPC races, browser (desktop + mobile +
 
 **Current hosted state:** the Priced Supabase project already exists in `ap-south-1`, canonical migrations and hosted hardening are applied, required Realtime tables are enabled, and privileged RPCs are service-role only. Dodo Payments product verification/approval is confirmed by the owner. The repository is connected to the existing Vercel project, which has been renamed to `priced`; its stable production alias remains `https://internet-price-tag.vercel.app`.
 
-**Remaining integration work before closed beta:** configure the existing Vercel project and stable beta URL, wire Supabase Auth with Google OAuth, configure Dodo Test Mode credentials/product/signed webhook, create free Upstash Redis, and run the complete hosted integration/payment/concurrency/Realtime/analytics test matrix. See [AGENTS.md](./AGENTS.md) and [INTEGRATION_NOW.md](./INTEGRATION_NOW.md).
+**Remaining integration work before closed beta:** wire Supabase Auth with Google OAuth, configure Dodo Test Mode credentials/product/signed webhook, create the free Upstash Redis database, and run the complete hosted integration/payment/concurrency/Realtime/analytics test matrix. The existing Vercel project is already renamed to `priced`, with `https://internet-price-tag.vercel.app` as the stable beta origin. See [AGENTS.md](./AGENTS.md) and [INTEGRATION_NOW.md](./INTEGRATION_NOW.md).
 
 **Before real-money public launch:** review production hosting plan compliance, disaster recovery/logical backups, legal/support readiness, environment isolation, live Dodo credentials, and the closed-beta results.
 
