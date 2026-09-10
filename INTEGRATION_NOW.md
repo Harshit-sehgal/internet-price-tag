@@ -70,7 +70,7 @@ Do not create paid infrastructure without explicit owner approval.
 
 1. Create one free Upstash Redis database for the designated beta environment. **Implemented** (`priced-beta-redis`, Free Tier, `us-west-1`).
 2. Configure the REST URL/token only in that environment. **Implemented** in Vercel Production; the token is stored as a Secret and the URL as a Config variable.
-3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances. **Pending** authenticated hosted exercise.
+3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances. **Partially verified**: the authenticated Production `/api/handle` burst returned `429 rate_limited` after the configured limit with no 5xx; the full matrix is pending permanent handle setup.
 4. Use free logs and free uptime checks initially.
 5. Check `/api/health` and `/api/health?check=db`.
 6. Watch structured critical events during sandbox testing.
