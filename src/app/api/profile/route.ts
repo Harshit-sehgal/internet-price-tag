@@ -3,7 +3,7 @@ import { getViewer } from "@/lib/auth";
 import { updateProfileExtras } from "@/lib/repo";
 import { validateBio, validateCta } from "@/lib/cta";
 import { rateLimit } from "@/lib/ratelimit";
-import { track } from "@/lib/analytics";
+import { persistAnalyticsEvent } from "@/lib/analytics-server";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +70,12 @@ export async function POST(req: Request) {
       ctaUrl: cta.url,
     });
     if (!updated) return NextResponse.json({ error: "profile_missing" }, { status: 404 });
-    track("profile_updated", { cta: cta.label ? "set" : "cleared" });
+    await persistAnalyticsEvent({
+      event: "profile_updated",
+      userId: user.id,
+      handle: updated.handle,
+      props: { cta: cta.label ? "set" : "cleared" },
+    });
     return NextResponse.json({ ok: true, profile: { handle: updated.handle, bio: updated.bio, ctaLabel: updated.ctaLabel, ctaUrl: updated.ctaUrl } });
   } catch {
     return NextResponse.json({ error: "update_failed" }, { status: 500 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAuthClient, isAuthConfigured } from "@/lib/auth";
-import { track } from "@/lib/analytics";
+import { persistAnalyticsEvent } from "@/lib/analytics-server";
 import { sanitizeInternalPath } from "@/lib/navigation";
 
 export async function GET(req: Request) {
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     if (error) {
       return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, url.origin));
     }
-    track("login_completed", { provider: "magic_link" });
+    await persistAnalyticsEvent({ event: "login_completed", props: { provider: "magic_link" } });
     return NextResponse.redirect(new URL(safeNext, url.origin));
   }
 
@@ -32,6 +32,6 @@ export async function GET(req: Request) {
   if (error) {
     return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, url.origin));
   }
-  track("login_completed", { provider: "oauth" });
+  await persistAnalyticsEvent({ event: "login_completed", props: { provider: "oauth" } });
   return NextResponse.redirect(new URL(safeNext, url.origin));
 }

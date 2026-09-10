@@ -6,6 +6,7 @@ import { TakeoverCTA } from "@/components/TakeoverCTA";
 import { HistoryLedger } from "@/components/HistoryLedger";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { HolderCta } from "@/components/HolderCta";
+import { persistAnalyticsEvent } from "@/lib/analytics-server";
 
 export const dynamic = "force-dynamic";
 
@@ -81,12 +82,11 @@ export default async function DomainPage({ params }: Params) {
   // Holder analytics input: a claimed, non-reserved tag render counts as a
   // tag view (best-effort, never blocks render).
   if (!unclaimed && !reserved) {
-    try {
-      const { track } = await import("@/lib/analytics");
-      track("tag_viewed", { domain: canonical, handle: row?.holderHandle ?? null });
-    } catch {
-      // analytics must never break the page
-    }
+    await persistAnalyticsEvent({
+      event: "tag_viewed",
+      domain: canonical,
+      handle: row?.holderHandle ?? null,
+    });
   }
   // Holder's public CTA (bio/CTA live on the profile; shown here so a
   // holding actually generates exposure for its holder).

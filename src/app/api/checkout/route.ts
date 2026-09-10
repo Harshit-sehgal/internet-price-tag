@@ -4,7 +4,7 @@ import { getViewer, demoViewer } from "@/lib/auth";
 import { getConfiguredProviderName, getPaymentProvider } from "@/lib/payments";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { rateLimit } from "@/lib/ratelimit";
-import { track } from "@/lib/analytics";
+import { persistAnalyticsEvent } from "@/lib/analytics-server";
 import { logEvent } from "@/lib/logger";
 
 export async function POST(req: Request) {
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   // Bot protection (§45): fail closed when Turnstile is configured.
   const turnstile = await verifyTurnstile(turnstileToken, ip === "unknown" ? null : ip);
   if (!turnstile.ok) {
-    track("checkout_blocked_bot", { reason: turnstile.reason });
+    await persistAnalyticsEvent({ event: "checkout_blocked_bot", userId: user.id, props: { reason: turnstile.reason } });
     return NextResponse.json({ error: "bot_check_failed", detail: turnstile.reason }, { status: 403 });
   }
 
@@ -76,7 +76,12 @@ export async function POST(req: Request) {
   // Idempotent retry: a double-click or network retry reuses the stored
   // provider session instead of opening a second payment session.
   if (quote.status === "checkout_created" && quote.checkoutPaymentId) {
-    track("checkout_started", { domain: quote.domain, reused: true });
+    await persistAnalyticsEvent({
+      event: "checkout_started",
+      domain: quote.domain,
+      userId: user.id,
+      props: { reused: true },
+    });
     return NextResponse.json({ checkoutUrl: quote.checkoutUrl, providerPaymentId: quote.checkoutPaymentId, reused: true });
   }
 
@@ -106,7 +111,12 @@ export async function POST(req: Request) {
       paymentId: checkout.providerPaymentId,
       checkoutUrl: checkout.checkoutUrl,
     });
-    track("checkout_started", { domain: quote.domain, provider: provider.name, reused: stored.reused });
+    await persistAnalyticsEvent({
+      event: "checkout_started",
+      domain: quote.domain,
+      userId: user.id,
+      props: { provider: provider.name, reused: stored.reused },
+    });
     return NextResponse.json({ checkoutUrl: stored.checkoutUrl, providerPaymentId: stored.paymentId, reused: stored.reused });
   } catch (e) {
     logEvent("checkout_provider_failed", "error", {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createQuote } from "@/lib/repo";
 import { getViewer, demoViewer } from "@/lib/auth";
 import { rateLimit } from "@/lib/ratelimit";
-import { track } from "@/lib/analytics";
+import { persistAnalyticsEvent } from "@/lib/analytics-server";
 
 export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
@@ -53,7 +53,12 @@ export async function POST(req: Request) {
 
   try {
     const quote = await createQuote(domain, user.id);
-    track("quote_created", { domain: quote.domain, next_price_cents: quote.nextPriceCents });
+    await persistAnalyticsEvent({
+      event: "quote_created",
+      domain: quote.domain,
+      userId: user.id,
+      props: { next_price_cents: quote.nextPriceCents },
+    });
     return NextResponse.json({ quoteId: quote.id, nextPriceCents: quote.nextPriceCents });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
