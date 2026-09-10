@@ -17,13 +17,16 @@ export default function RefundsPage() {
       <p>
         A completed takeover is generally <strong>not refundable</strong> because somebody later
         took the tag. You purchased temporary holder status, and its duration was intentionally not
-        guaranteed. That is the game.
+        guaranteed. This does not limit any refund or consumer rights that apply by law or through
+        the payment provider.
       </p>
 
       <h2 className="display" style={{ fontSize: 18 }}>Errors and disputes</h2>
       <p>
-        Genuine billing errors (double charges, provider faults) are corrected. Contact us through
-        the repository issue tracker with your payment reference.
+        Genuine billing errors such as duplicate charges or provider faults are reviewed and
+        corrected where appropriate. Never post payment credentials, full provider references, or
+        other private billing information in a public issue. A private billing-support channel will
+        be published before real-money payments are enabled.
       </p>
     </article>
   );
