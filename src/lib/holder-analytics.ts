@@ -68,7 +68,20 @@ export async function getHolderAnalytics(handle: string): Promise<HolderAnalytic
   });
   if (error || !data) return unavailable;
 
-  const raw = data as Record<string, unknown>;
+  // PostgREST normally returns a JSON object for a scalar jsonb RPC, but
+  // proxies and older client versions may wrap it in a one-row array or
+  // return the JSON as text. Normalize those equivalent shapes before
+  // reading the aggregate fields.
+  let normalized: unknown = Array.isArray(data) ? data[0] : data;
+  if (typeof normalized === "string") {
+    try {
+      normalized = JSON.parse(normalized) as unknown;
+    } catch {
+      return unavailable;
+    }
+  }
+  if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) return unavailable;
+  const raw = normalized as Record<string, unknown>;
   const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0);
 
   const byDomain = Array.isArray(raw.by_domain)
