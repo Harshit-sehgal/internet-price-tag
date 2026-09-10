@@ -129,17 +129,15 @@ Do not enable Dodo Live Mode until the hosted sandbox integration is green and t
 
 ## Current Vercel state
 
-GitHub deployment status confirms this repository is still connected to the existing Vercel project named `internet-price-tag` in the owner's Vercel workspace.
+The existing Vercel project has been reused and renamed to `priced` in the owner's workspace. The project id is unchanged. Its current production alias remains `https://internet-price-tag.vercel.app`; use that as the stable beta origin until a custom domain is intentionally selected.
 
 The GitHub Vercel deployment target has referenced workspace slug:
 
 `harshit10sehgal-2319s-projects`
 
-The ChatGPT Vercel connector currently receives `403 Forbidden` when querying that project/workspace directly. This is an access limitation of that connector, not evidence that the project does not exist.
+The ChatGPT Vercel connector may receive `403 Forbidden` when querying that project/workspace directly. The authenticated Vercel CLI can inspect and manage the project.
 
-A browser agent operating in the owner's authenticated Vercel session should reuse the existing project and rename it to `priced` where possible instead of creating a duplicate.
-
-Ensure Git integration points to `Harshit-sehgal/priced` and production branch `main`.
+Git integration remains connected to `Harshit-sehgal/priced`; the production deployment aliases include the `git-main` deployment. No privileged environment variables have been configured yet; the designated beta environment must receive them only after the owner supplies or creates the provider credentials.
 
 For sandbox and closed beta, first establish one stable Vercel beta/staging origin. A purchased custom domain is not required for integration testing.
 

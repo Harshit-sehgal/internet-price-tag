@@ -64,7 +64,7 @@ Before real customer payments, create and test a logical backup procedure using 
 
 ## Vercel
 
-Reuse the existing Vercel project currently associated with the old project name `internet-price-tag` and rename it to `priced` where possible.
+The existing Vercel project has been renamed from `internet-price-tag` to `priced`.
 
 GitHub deployment status confirms the existing Vercel connection still deploys this repository.
 
@@ -76,7 +76,7 @@ The current ChatGPT Vercel connector receives `403 Forbidden` when querying this
 
 Repository must remain `Harshit-sehgal/priced` with `main` as the production branch.
 
-Establish one stable beta URL first. A custom domain is not required to complete sandbox integration.
+The stable production alias is currently `https://internet-price-tag.vercel.app`. A custom domain is not required to complete sandbox integration.
 
 ## Dodo Payments
 

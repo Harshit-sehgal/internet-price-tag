@@ -11,7 +11,7 @@ because they need accounts, credentials and a legal review.
 
 ## 1. Supabase (data + auth + realtime)
 
-1. Create a project at [supabase.com](https://supabase.com) (choose a region close to expected traffic).
+1. Use the existing Supabase project `Priced` (`vctlhslzmplawvktnbgb`, `ap-south-1`). Do not create another project for this phase.
 2. Apply migrations deterministically — choose one path:
    - **Supabase CLI (recommended):** `npx supabase db push` (applies `supabase/migrations/*` in order).
    - **Plain SQL Editor / psql:** in **SQL Editor**, run `db/schema.sql` then `db/schema-extended.sql` in order, or `for f in supabase/migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done`.
@@ -26,11 +26,9 @@ because they need accounts, credentials and a legal review.
 
 ## 2. Dodo Payments (launch provider)
 
-1. Verify your business/account can go live for this product type. Confirm the
-   symbolic-status product is permitted under Dodo's restricted businesses
-   list and local law (plan §21). If anything is unclear, get written
-   confirmation or consult a lawyer before proceeding.
-2. Create a **one-time product with Pay-What-You-Want enabled** (min $5.00,
+1. Dodo product verification/approval for Priced is already confirmed by the
+   owner. Do not repeat the eligibility investigation unless Dodo requests it.
+2. Create or reuse a **one-time product with Pay-What-You-Want enabled** (min $5.00,
    no low max — each quote passes its exact next price as the cart `amount`).
    Copy its product id → `DODO_PAYMENTS_PRODUCT_ID`.
 3. Copy from the Dodo dashboard:
@@ -45,30 +43,13 @@ because they need accounts, credentials and a legal review.
 
 ## 3. Vercel (hosting)
 
-> **Project rename (owner action):** the Vercel project is currently named
-> `internet-price-tag` (project id `prj_uOsxAmofMbpp5spVp32YRINEKYys`,
-> linked via `.vercel/project.json`). Rename it so deployments, dashboards
-> and status checks correspond to Priced:
->
-> 1. Log in at vercel.com → team → project `internet-price-tag` →
->    Settings → General → **Project Name** → change to `priced`.
-> 2. Renaming preserves: GitHub integration (repo is already `priced`),
->    env variables, domains, deployments, and commit status checks. The old
->    `*.vercel.app` project subdomain changes to the new name — any doc that
->    references the old subdomain must be updated (none do today).
-> 3. After renaming, run `vercel link --yes` locally to refresh
->    `.vercel/project.json` (it stores the project name).
->
-> Renaming via CLI (requires a fresh login: the stored CLI token on this
-> machine is expired):
->
-> ```bash
-> vercel login
-> vercel project rename priced --scope <your-team>
-> ```
+> **Project rename:** the existing project id
+> `prj_uOsxAmofMbpp5spVp32YRINEKYys` has been renamed to `priced`.
+> Its stable production alias remains `https://internet-price-tag.vercel.app`.
+> The Git integration continues to deploy `Harshit-sehgal/priced` from `main`.
 
-1. Import the repo into Vercel; framework auto-detects Next.js.
-2. Add the custom domain and update Supabase redirect URLs to match.
+1. Reuse the linked project; framework is already configured as Next.js.
+2. Use `https://internet-price-tag.vercel.app` as the beta origin and update Supabase redirect URLs to match. A custom domain is not required for sandbox.
 3. Set environment variables for **Production** and separately for
    **Preview** (§58 — never share production DB/webhooks with previews):
    ```

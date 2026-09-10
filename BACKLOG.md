@@ -10,13 +10,13 @@ Status: `code` = work to do in this repo · `owner` = needs accounts/credentials
 
 | # | Task | Type | Owner | Notes |
 |---|------|------|-------|-------|
-| A1 | Create **Supabase** project + apply migrations (`npx supabase db push` or `db/schema.sql` → `db/schema-extended.sql`) | owner | repo owner | `DEPLOY.md §1` |
+| A1 | Verify the existing **Supabase** project + hosted hardening state; apply only missing migrations if any | owner | repo owner | `INTEGRATION_NOW.md` · `DEPLOY.md §1` |
 | A2 | Enable **Supabase Auth** providers (Google OAuth + email magic link) + set Site URL + redirect URLs | owner | owner | Needs Google Cloud OAuth client |
 | A3 | Enable **Supabase Realtime** + **backups/PITR** (7-day window) | owner | owner | `DEPLOY.md §7` |
 | A4 | Create **Upstash Redis** DB + set `UPSTASH_REDIS_REST_URL/TOKEN` in Vercel Preview + Production (separate DBs ideally) | owner | owner | `DEPLOY.md §3` |
-| A5 | **Dodo permission check** for symbolic-status product (confirm not restricted) → get **test** credentials + create PWYW one-time product → copy `DODO_PAYMENTS_PRODUCT_ID` | owner | owner (+ legal if unclear) | `DEPLOY.md §2` · spec §21 |
+| A5 | Get **test** credentials + create/reuse approved PWYW one-time product → copy `DODO_PAYMENTS_PRODUCT_ID` | owner | owner | `DEPLOY.md §2` · `DODO_COMPLIANCE_GATE.md` |
 | A6 | Add Dodo webhook `https://<domain>/api/webhooks/payments` (test endpoint) → copy `DODO_PAYMENTS_WEBHOOK_KEY` | owner | owner | Subscribe to `payment.succeeded/failed/cancelled` |
-| A7 | **Vercel**: rename project `internet-price-tag` → `priced` (runbook in DEPLOY.md §3), env separation (Production vs Preview), custom domain | owner | owner | `DEPLOY.md §3` — never share prod DB/webhook with previews. Env matrix documented in `.env.example` |
+| A7 | **Vercel**: project rename is complete; configure designated beta env separation (Production vs Preview) | owner | owner | `DEPLOY.md §3` — no custom domain required for sandbox; never share privileged beta secrets with previews |
 | A8 | Set `SENTRY_DSN` + **Vercel Log Drains** + `/api/health` uptime check; alert on `refund_failed`, `takeover_finalization_error`, `webhook_*_failed`, `webhook_signature_invalid` spikes | owner | owner | `DEPLOY.md §8` |
 | A9 | Turnstile widget (optional) + Dodo fraud/risk features in dashboard | owner | owner | `DEPLOY.md §3` |
 
