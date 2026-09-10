@@ -317,6 +317,9 @@ export class DodoPaymentsProvider implements PaymentProvider {
       },
       body: JSON.stringify({
         product_cart: [{ product_id: this.productId, quantity: 1, amount: args.amountCents }],
+        // Dodo may have no region-specific methods available in a test
+        // checkout. Keep card methods as the guaranteed fallback.
+        allowed_payment_method_types: ["credit", "debit"],
         return_url: args.successUrl,
         cancel_url: args.cancelUrl,
         billing_currency: process.env.DODO_PAYMENTS_CURRENCY?.trim() || "USD",

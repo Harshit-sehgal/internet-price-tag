@@ -179,6 +179,7 @@ test("dodo checkout posts dynamic PWYW amount + quote metadata, refund posts pay
     const cart = (seen[0].body.product_cart as Array<Record<string, unknown>>)[0];
     assert.equal(cart.product_id, "pdt_test_123");
     assert.equal(cart.amount, 94940);
+    assert.deepEqual(seen[0].body.allowed_payment_method_types, ["credit", "debit"]);
     assert.equal(seen[0].body.cancel_url, "https://app.test/domain/openai.com?checkout=cancelled");
     const meta = seen[0].body.metadata as Record<string, string>;
     assert.equal(meta.quote_id, "22222222-2222-4222-8222-222222222222");
