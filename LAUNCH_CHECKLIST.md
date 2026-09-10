@@ -1,120 +1,116 @@
-# Launch Checklist (§78 + user list item 19)
+# Launch Checklist — Priced
 
-Status legend — demo-mode tests passing is NOT production-done:
+One authoritative progress file (§41). Statuses are strict:
 
-- ✅ implemented + tested in this repo
-- 🟡 code done, needs production/staging verification
-- 🔒 owner/infrastructure step (accounts, credentials, legal, humans)
-- ❌ incomplete — real work remains
+- **Implemented** — code exists in the repo
+- **Locally verified** — ran on a developer machine
+- **CI verified** — runs on every push to `main` via `.github/workflows/ci.yml`
+- **Staging verified** — ran against the real preview environment with real services
+- **Production verified** — ran against production with live credentials
+- **Owner blocked** — requires accounts, credentials, legal, or humans; exact action documented
+- **Deferred** — deliberately not for launch
+
+Nothing is marked beyond the level actually evidenced.
 
 ## Product
 
-- ✅ Homepage/market with premise, search, market cap metric
-- ✅ Domain pages: holder, price, transparent math, history, unclaimed state
-- ✅ Search with full URL/domain normalization and server-side eligibility
-- ✅ Takeover flow: quote (5-min TTL) → confirm → checkout → atomic finalization
-- ✅ Success receipt with share artifacts and challenger hand-off
-- 🟡 UI/device review at 375px/430px/tablet/desktop, long domains, large prices, all states (item 11 — not yet done on a real deployment)
-- 🟡 OG cards render in build; not yet validated in the X card validator (item 13)
+| Item | Status | Evidence |
+|---|---|---|
+| Homepage/market, search, market-cap metric, discovery (Most Contested, Fastest Rising, Newly Claimed) | CI verified | `tests/browser/market.spec.ts`, `responsive.spec.ts`; discovery logic unit-tested in `tests/integration/discovery.test.ts` |
+| Domain pages: holder, price, transparent math, provenance history (prev holder, deltas, first claims) | CI verified | `tests/browser/market.spec.ts`, `loop.spec.ts` |
+| Takeover flow: quote (5-min TTL) → confirm → checkout → atomic finalization | CI verified | `tests/integration/*`, `tests/browser/loop.spec.ts` |
+| Success receipt + share artifacts (X, copy, native share, `?via=` attribution) | CI verified | `tests/browser/loop.spec.ts`, `og.spec.ts` |
+| Priced branding everywhere public | CI verified | `tests/browser/brand.spec.ts` asserts the old name is absent from every surface |
+| UI/device review at 375/430/768/laptop/large | Locally verified (375/430/768 via CI) | `tests/browser/responsive.spec.ts`; real-device eyeball pass remains owner |
+| OG cards (domain + receipt, Priced branded, prev holder + next price) | CI verified as routes | PNG rendering + headers asserted in `og.spec.ts`; X card validator check is owner-gated |
 
-## Priced consolidation (V2)
+## Market correctness (money)
 
-- ✅ Brand migration: Priced everywhere public (header, metadata, OG cards,
-  share copy, checkout descriptions, legal pages, docs); old name gone from
-  user-facing surfaces; `priced` added to the reserved-handle list
-- ✅ Holder profiles: bio, optional CTA, currently/previously held, derived
-  stats (largest tag, most contested), takeover history (`/u/[handle]`)
-- ✅ Holder CTA: https-only validation, safe external links (noopener
-  noreferrer nofollow), shown on profile + held tags' domain pages,
-  `cta_clicked` tracking (`/api/profile`, `src/lib/cta.ts`)
-- ✅ Permanent history: provenance ledger with previous holder, price delta,
-  first-claim mark, current-holder flag, takeover count, highest price,
-  total paid (`src/components/HistoryLedger.tsx`)
-- ✅ Holder analytics: real COUNTs from `analytics_events` (tag views,
-  unique sessions, profile views, share visits, CTA clicks, by-domain,
-  by-day) at owner-only `/u/[handle]/analytics`; honest empty states when
-  no datastore or no traffic; no fabricated numbers anywhere
-- ✅ New analytics events in taxonomy: `tag_viewed`, `profile_viewed`,
-  `cta_clicked`, `profile_updated` — all wired to real emit sites
-- ✅ Discovery: Fastest Rising (challenger-driven rises only, 7-day window)
-  and Newly Claimed (first claims only), both derived from the immutable
-  ledger with tests; no fabricated popularity
-- ✅ Share: native share sheet where supported, X intent, copy post/link,
-  `?via=` attribution retained
-- ✅ Receipt + OG cards: Priced branding, previous holder, next challenge
-  price when still held, https/env-based host (defaults to priced.game)
-- 🔒 Priced Credits: spec + ledger migration exist, flag OFF, no surface
-  (docs/CREDITS.md). Activation requires the consistency gates listed there
-- ✅ Public copy contains no em/en dashes; AI-marketing patterns removed
+| Item | Status | Evidence |
+|---|---|---|
+| Integer-cent pricing, locked formula ($5 start, max($5, 1%)) | CI verified | `src/lib/game.test.ts` |
+| Version-checked, row-locked atomic `finalize_takeover` RPC | CI verified (dockerized Postgres); Staging pending | `tests/pg/finalize-rpc.test.ts`: 25-racer races → exactly one winner, losers STALE_QUOTE; real Supabase run pending (Owner blocked A1) |
+| Immutable sales history (append-only) | CI verified | RPC inserts only; `db/ops.sql` documents correction procedure |
+| In-memory mirror correctness (demo) | CI verified | `tests/integration/concurrency.test.ts` |
+| Idempotent webhook handling (event + payment id), stale-quote refunds | CI verified | `tests/integration/webhook-safety.test.ts`, `dodo.test.ts` |
 
-## Market
+## Payments (Dodo primary, Stripe adapter retained)
 
-- ✅ Atomic transaction: `finalize_takeover` RPC, row-locked, version-checked (db/schema.sql)
-- ✅ Immutable sales history (append-only; admin corrections via ops SQL only)
-- ✅ Concurrency verified in-memory: unit/integration suite, browser E2E, live-HTTP race test (12 racers → exactly one winner)
-- ✅ Real-Postgres harness exists: `tests/integration/postgres.finalize.test.ts` + `npm run test:postgres` (skips in CI, 8 cases). Run in staging: `RUN_POSTGRES_TESTS=1 NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run test:postgres` — then 🟡 until actually run
-- 🟡 Realtime wired (Supabase Realtime when configured, polling fallback) — needs verification against the real project
+| Item | Status | Evidence |
+|---|---|---|
+| Dodo provider: PWYW checkout, Standard-Webhooks verify, refunds | Implemented; CI-verified logic | `tests/integration/dodo.test.ts` (network stubbed) |
+| Dodo permission check for symbolic-status product | Owner blocked | Exact action: DEPLOY.md §2 — ask Dodo whether "temporary symbolic holder status in a game" is permitted before live keys |
+| Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Owner blocked (needs A5–A7) | Staging smoke script ready: `npm run smoke:staging`; matrix procedure in DEPLOY.md §4. Not run: no test credentials yet. |
+| Live Dodo configuration | Owner blocked | DEPLOY.md §6 |
 
-## Payments (Dodo is the launch default)
+## Infrastructure
 
-- ✅ Provider abstraction with Dodo implementation (PWYW checkout sessions, Standard-Webhooks verify, refunds API); Stripe kept as optional adapter
-- ✅ Webhook retry contract: unique-violation-only dedupe, 500 on DB failure, idempotent checkout per quote, deterministic stale-quote refunds
-- ✅ Duplicate-event handling verified by tests
-- 🟡 Full Dodo sandbox matrix never yet run (item 8: success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) — staging smoke exists (`npm run smoke:staging`)
-- 🔒 Dodo permission check for symbolic-status product → test credentials → live keys + webhook secret + PWYW product id in Vercel (owner, after §21 check)
-- 🔒 Dodo fraud/risk features enabled in the dashboard (owner)
+| Item | Status | Evidence |
+|---|---|---|
+| Supabase project + migrations + auth + Realtime + backups | Owner blocked | DEPLOY.md §1, §7. All code-side prerequisites done (6 versioned migrations, RLS, RPC, realtime publication, PG harness proving migrations boot a fresh DB) |
+| Real-Postgres RPC concurrency (10 + 25 racers) | Locally verified (docker postgres:16); staging pending | `npm run test:pg` — 10/10 pass incl. `holder_analytics` RPC aggregation test |
+| Upstash Redis + distributed rate limits | Owner blocked (code CI-verified) | `tests/integration/ratelimit.test.ts`; fail-closed verified; A4 needs the actual DB |
+| Vercel project rename `internet-price-tag` → `priced` | Owner blocked | CLI token on dev machine expired; runbook in DEPLOY.md §3 (UI path + CLI path) |
+| Env separation (Local/Preview/Production) | Implemented (docs); enforcement owner | Matrix in `.env.example`; Vercel env scoping is the owner step |
+| Monitoring/alerts (error-event list, uptime, 5xx rate) | Implemented (docs + structured logs); wiring owner blocked | DEPLOY.md §8: exact log-drain queries + uptime endpoints; A8 wires destinations |
+| Health endpoint (liveness + `?check=db` readiness) | CI verified | `tests/integration/health-analytics.test.ts` + CI smoke step |
 
-## Safety
+## Holder value layer
 
-- ✅ Distributed rate limiting code (Upstash Redis, fail-closed) with layered keys (account + IP + IP/handle + domain + user+domain); in-memory fallback for local/CI
-- ✅ Payload guards: quotes/checkout/handle 4 KiB, webhooks 64 KiB, analytics 10 KiB, demo-sign 16 KiB
-- ✅ Security headers: HSTS, nosniff, DENY framing, referrer, permissions-policy (`next.config.mjs`)
-- 🟡 Upstash database not yet created; limits never yet exercised across instances — run `BACKLOG.md` Lane B5 after A4
-- ✅ Reserved domains enforced server-side at quote creation + inside `finalize_takeover`; ops SQL to manage
-- ✅ User suspension enforced at quote creation, checkout and finalization
-- ✅ Turnstile checkout validation (fail-closed when configured; pass-through in demo/CI)
-- ✅ Handle validation + impersonation blocklist + `HANDLE_TAKEN` race handling
-- ✅ IDN/punycode (homograph) rejection + explicit V1 suffix-policy docs (DEPLOY.md §9); TLD allowlist remains the V1 explicit limit
-- 🔒 Turnstile widget creation + Dodo fraud tooling (owner)
+| Item | Status | Evidence |
+|---|---|---|
+| Profiles: bio, CTA, held/previously-held, takeover history, stats | CI verified | `tests/integration/profile.test.ts`, `tests/browser/profile.spec.ts` |
+| CTA safety (https-only, protocol rejection, noopener noreferrer nofollow, non-ownership framing) | CI verified | `tests/integration/cta.test.ts` incl. dangerous-protocol regression; WHATWG normalization safe (stores canonical URL) |
+| Holder analytics `/u/[handle]/analytics` (owner-only) | CI verified (route + permission boundary); staging pending (needs real events) | SQL aggregation via `holder_analytics` RPC, PG-tested; honest empty states |
+| Per-tab session ids for unique-visitor counts | Implemented; Locally verified | `src/lib/analytics.ts` sessionStorage id now sent by `track()`; PG-tested distinct-session counting in `holder_analytics` RPC |
+
+## Safety & security
+
+| Item | Status | Evidence |
+|---|---|---|
+| Reserved domains (static + DB), enforced at quote + inside RPC | CI verified | `tests/pg/finalize-rpc.test.ts` (reserved-domain rollback) |
+| Suspension, self-takeover, IDN/punycode, IP/localhost rejection | CI verified | `src/lib/domains.test.ts`, `game.test.ts`, PG suite |
+| Rate limits (quote/checkout/handle/demo-sign, user+IP+domain layers) | CI verified | `tests/integration/ratelimit.test.ts` |
+| Turnstile (fail-closed when configured) | CI verified | `src/lib/turnstile.test.ts` |
+| Open-redirect guards (callback, welcome, handle) | Locally verified (code review + sanitization) | `src/app/auth/callback/route.ts:11`, `welcome/page.tsx`; no automated test (P2 candidate) |
+| JSON-only CSRF guards on all money/identity routes | CI verified | health-analytics tests assert 415; routes enumerated in security review |
+| Security headers (HSTS, nosniff, DENY, referrer, permissions) | CI verified | `next.config.mjs`; deployed-header check is staging |
+| Priced Credits OFF (no read/write path, no UI) | Verified by absence | `grep credit_ledger src/` → no request path; flag unset everywhere |
+| Analytics privacy (PII strip, no raw webhook bodies, retention doc) | CI verified + documented | route tests; DEPLOY.md §9 retention |
 
 ## Trust
 
-- ✅ Terms, Privacy, Refunds pages (plain-language) + symbolic-status language everywhere ("holder", non-affiliation, no-payout, immediate-takeover-risk)
-- 🔒 Professional legal review of copy + Dodo product-classification confirmation (§49/item 16 — strongly advised before real money)
+| Item | Status |
+|---|---|
+| Terms/Privacy/Refunds copy (plain-language, non-ownership distinction) | Implemented; professional review Owner blocked (DEPLOY.md Lane D1) |
+| Dodo product-classification confirmation | Owner blocked |
 
-## Reliability
+## Documentation
 
-- ✅ Structured JSON logs for all §56 critical payment events + payload hashes (no secret logging); optional Sentry forwarding for error-level events when `SENTRY_DSN` is set (still needs owner Log Drain + health-check monitoring)
-- ✅ CI runs lint, typecheck, unit, concurrency, browser and race tests on every push; new checks: migrations structure determinism + analytics taxonomy + `/api/health` liveness/readiness (`?check=db`)
-- ✅ Versioned migrations in `supabase/migrations/` + portable `db/*.sql` (DEPLOY.md §1; `supabase/migrations/README.md`) — CI verifies fresh-DB can boot from these
-- ✅ Staging smoke script `scripts/staging-smoke.mjs` (`npm run smoke:staging`) covers health, analytics, CSRF, auth redirect, routing
-- 🟡 Alert rules documented (DEPLOY.md §8) but no alert destination wired yet (owner to add Vercel Log Drains + `/api/health` uptime check)
-- 🔒 Sentry/Vercel alerts + Supabase backups/PITR (owner settings; recovery runbook in DEPLOY.md §7)
+| Item | Status |
+|---|---|
+| PROJECT_BLUEPRINT reflects reality (current state, not plan) | Implemented (this pass) |
+| DEPLOY runbooks (incl. Vercel rename, alerts, retention) | Implemented |
+| BACKLOG aligned with this file | Implemented |
+| `.env.example` full audit + environment matrix | Implemented |
+| No `[ ]` items describing existing features | Implemented |
 
-## Distribution
+## Owner gates remaining (in order — exact actions in DEPLOY.md)
 
-- ✅ Dynamic OG cards for domains and receipts
-- ✅ X share intent with default copy + copy post/link buttons
-- ✅ Share attribution (`?via=`) and `share_visit` analytics event
-- ✅ SEO: sitemap of claimed domains only, robots exclusions, noindex empty pages
-- 🟡 `share_visit → takeover_click → checkout → purchase` funnel easing verified in code only, not against live traffic (item 14/22)
+1. **Supabase** (§1): create project, apply `supabase/migrations/*` in order, enable Google + magic-link auth, enable Realtime, enable backups/PITR, copy the three env keys.
+2. **Upstash** (§3/A4): create Redis DBs (staging + prod), set `UPSTASH_REDIS_REST_URL/TOKEN` per Vercel env.
+3. **Dodo** (§2/A5): permission check → test credentials → create PWYW one-time product → `DODO_PAYMENTS_PRODUCT_ID` + `DODO_PAYMENTS_WEBHOOK_KEY` (test endpoint first).
+4. **Vercel** (§3): rename project to `priced` (runbox in doc), attach custom domain, set envs with Preview/Production separation, `vercel link --yes` locally.
+5. **Sandbox gate** (§4/B1): on preview with test keys run the full Dodo matrix + `npm run test:postgres` against real Supabase + `npm run smoke:staging`.
+6. **Monitoring** (§8/A8): wire Log Drain alerts per the query patterns, uptime checks on `/api/health(+?check=db)`, optional `SENTRY_DSN`.
+7. **Legal review** of policy pages + Dodo classification (D1).
+8. **Live keys** (D2): swap to live Dodo config in Production only.
+9. **Closed beta** (D3): 10–20 people; watch `takeover_succeeded`, `refund_failed`, share-visits; measure repeat-challenge rate (§35 metrics list).
+10. **Public launch** only after §37 gate is fully green.
 
-## Analytics
+## Beta measurement plan (§35)
 
-- ✅ Persistent funnel sink: `analytics_events` table + `POST /api/analytics` (+ server `persistAnalyticsEvent`); `track()` best-effort mirrors there (no PII/secrets)
-- ✅ Taxonomy covers homepage_viewed → share_visit → challenger purchase funnel (item 22 measurable once infra has traffic)
+Track via existing `analytics_events` (all real, SQL-counted):
+`domain_searched → domain_opened → takeover_clicked → quote_created → checkout_started → payment_succeeded → takeover_succeeded → share_clicked → share_visit → (challenger) takeover_clicked…`
 
-## Repo hardening
-
-- ✅ Branch protection documented: `.github/BRANCH_PROTECTION.md` (require PR + `verify` job, no force-push, no deletion)
-- ✅ Parallel work distribution: `BACKLOG.md` (4 lanes — infra, staging verification, code, go-live)
-
-## Owner gates remaining (in order)
-
-1. Supabase project + schema + auth providers + Realtime + backups (DEPLOY.md §1)
-2. Upstash Redis database + envs (Preview + Production)
-3. Dodo permission check → test credentials → live keys + webhook + PWYW product (DEPLOY.md §2)
-4. Vercel deploy with env separation (DEPLOY.md §3) + custom domain — enable branch protection per `.github/BRANCH_PROTECTION.md`
-5. §76 Dodo sandbox payment gate on preview (DEPLOY.md §4) + `npm run test:postgres` + `npm run smoke:staging` on preview URL
-6. Legal review of policy pages and checkout language
-7. Closed beta with 10–20 people proving repeat competition (§77) → public announcement
+The one number that matters: repeat takeover rate — share of takeovers whose buyer previously arrived via a `share_visit`. SQL for it exists conceptually in the funnel events; a beta dashboard query should be written when staging data exists (P2 until then).

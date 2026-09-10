@@ -48,3 +48,31 @@ test("bio: null, empty and trimmed-long inputs", () => {
   assert.equal(validateBio("x".repeat(281)).ok, false);
   assert.deepEqual(validateBio("x".repeat(280)), { ok: true, bio: "x".repeat(280) });
 });
+
+test("cta: rejects dangerous and exotic protocols (§22 regression)", () => {
+  // validateCta accepts ONLY https; every other scheme must fail.
+  const dangerous = [
+    "javascript:alert(1)",
+    "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+    "file:///etc/passwd",
+    "ftp://files.example.com",
+    "ws://example.com",
+    "vbscript:msgbox(1)",
+    "://example.com",
+    "//example.com",           // protocol-relative: no scheme
+    "notaurl",
+    "  ",
+  ];
+  for (const url of dangerous) {
+    const res = validateCta("Go", url);
+    assert.equal(res.ok, false, `must reject ${url}`);
+  }
+  // The one true scheme still passes. Lenient WHATWG forms like
+  // "https:/example.com" and "https:example.com" NORMALIZE to the same
+  // https origin; accepting the normalized form is safe, and the stored
+  // value is the canonical URL, never the raw input.
+  const normalized = validateCta("Go", "https:example.com");
+  assert.ok(normalized.ok);
+  if (normalized.ok) assert.equal(normalized.url, "https://example.com/");
+  assert.ok(validateCta("Go", "https://example.com").ok);
+});
