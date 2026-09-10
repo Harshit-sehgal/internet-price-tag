@@ -39,7 +39,7 @@ Nothing is marked beyond the level actually evidenced.
 | Item | Status | Evidence |
 |---|---|---|
 | Dodo provider: PWYW checkout, Standard-Webhooks verify, refunds | Implemented; CI-verified logic | `tests/integration/dodo.test.ts` (network stubbed) |
-| Dodo permission check for symbolic-status product | Owner blocked | Exact action: DEPLOY.md §2 — ask Dodo whether "temporary symbolic holder status in a game" is permitted before live keys |
+| Dodo permission check for symbolic-status product | Implemented | Owner confirmed Dodo product verification/approval; do not reopen unless Dodo requests it |
 | Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Owner blocked (needs A5–A7) | Staging smoke script ready: `npm run smoke:staging`; matrix procedure in DEPLOY.md §4. Not run: no test credentials yet. |
 | Live Dodo configuration | Owner blocked | DEPLOY.md §6 |
 
@@ -47,11 +47,11 @@ Nothing is marked beyond the level actually evidenced.
 
 | Item | Status | Evidence |
 |---|---|---|
-| Supabase project + migrations + auth + Realtime + backups | Owner blocked | DEPLOY.md §1, §7. All code-side prerequisites done (6 versioned migrations, RLS, RPC, realtime publication, PG harness proving migrations boot a fresh DB) |
+| Supabase project + migrations + auth + Realtime + backups | Owner blocked | Existing Priced project and hosted-hardening migrations are the source of truth; Auth URL/provider wiring and production backup policy remain owner-gated. See `INTEGRATION_NOW.md`. |
 | Real-Postgres RPC concurrency (10 + 25 racers) | Locally verified (docker postgres:16); staging pending | `npm run test:pg` — 10/10 pass incl. `holder_analytics` RPC aggregation test |
 | Upstash Redis + distributed rate limits | Owner blocked (code CI-verified) | `tests/integration/ratelimit.test.ts`; fail-closed verified; A4 needs the actual DB |
-| Vercel project rename `internet-price-tag` → `priced` | Owner blocked | CLI token on dev machine expired; runbook in DEPLOY.md §3 (UI path + CLI path) |
-| Env separation (Local/Preview/Production) | Implemented (docs); enforcement owner | Matrix in `.env.example`; Vercel env scoping is the owner step |
+| Vercel project rename `internet-price-tag` → `priced` | Implemented | Existing project renamed through the authenticated Vercel CLI; project id preserved and production alias remains `https://internet-price-tag.vercel.app` |
+| Env separation (Local/Preview/Production) | Owner blocked | Matrix in `.env.example`; designated beta env is still empty and must not receive secrets in ordinary previews |
 | Monitoring/alerts (error-event list, uptime, 5xx rate) | Implemented (docs + structured logs); wiring owner blocked | DEPLOY.md §8: exact log-drain queries + uptime endpoints; A8 wires destinations |
 | Health endpoint (liveness + `?check=db` readiness) | CI verified | `tests/integration/health-analytics.test.ts` + CI smoke step |
 
@@ -83,7 +83,7 @@ Nothing is marked beyond the level actually evidenced.
 | Item | Status |
 |---|---|
 | Terms/Privacy/Refunds copy (plain-language, non-ownership distinction) | Implemented; professional review Owner blocked (DEPLOY.md Lane D1) |
-| Dodo product-classification confirmation | Owner blocked |
+| Dodo product-classification confirmation | Implemented (owner-confirmed; see `AGENTS.md` and `INTEGRATION_NOW.md`) |
 
 ## Documentation
 
@@ -97,13 +97,13 @@ Nothing is marked beyond the level actually evidenced.
 
 ## Owner gates remaining (in order — exact actions in DEPLOY.md)
 
-1. **Supabase** (§1): create project, apply `supabase/migrations/*` in order, enable Google + magic-link auth, enable Realtime, enable backups/PITR, copy the three env keys.
+1. **Supabase/Auth** (§1): sign in to the existing Priced project, verify Google + magic-link auth, configure Site URL/redirects, verify Realtime, and copy the three env keys.
 2. **Upstash** (§3/A4): create Redis DBs (staging + prod), set `UPSTASH_REDIS_REST_URL/TOKEN` per Vercel env.
-3. **Dodo** (§2/A5): permission check → test credentials → create PWYW one-time product → `DODO_PAYMENTS_PRODUCT_ID` + `DODO_PAYMENTS_WEBHOOK_KEY` (test endpoint first).
-4. **Vercel** (§3): rename project to `priced` (runbox in doc), attach custom domain, set envs with Preview/Production separation, `vercel link --yes` locally.
+3. **Dodo** (§2/A5): obtain test credentials, create/reuse the approved PWYW one-time product, and configure `DODO_PAYMENTS_PRODUCT_ID` + `DODO_PAYMENTS_WEBHOOK_KEY` for the stable beta endpoint.
+4. **Vercel** (§3): configure the designated beta environment on the existing `priced` project; no custom domain is required for sandbox.
 5. **Sandbox gate** (§4/B1): on preview with test keys run the full Dodo matrix + `npm run test:postgres` against real Supabase + `npm run smoke:staging`.
 6. **Monitoring** (§8/A8): wire Log Drain alerts per the query patterns, uptime checks on `/api/health(+?check=db)`, optional `SENTRY_DSN`.
-7. **Legal review** of policy pages + Dodo classification (D1).
+7. **Legal review** of policy pages (D1).
 8. **Live keys** (D2): swap to live Dodo config in Production only.
 9. **Closed beta** (D3): 10–20 people; watch `takeover_succeeded`, `refund_failed`, share-visits; measure repeat-challenge rate (§35 metrics list).
 10. **Public launch** only after §37 gate is fully green.

@@ -19,6 +19,14 @@ This file is the current authority for the next execution phase and overrides ol
 - Pricing formula: `increment = max($5, 1% of current price)` and `next price = current price + increment`
 - Goal: complete a real free-tier sandbox/closed-beta integration before enabling real money
 
+## Recorded execution evidence (2026-09-10)
+
+- The existing Vercel project was reused and renamed from `internet-price-tag` to `priced` without creating a duplicate.
+- The stable production alias is currently `https://internet-price-tag.vercel.app` and serves the main deployment in demo mode.
+- Vercel Git deployment remains connected to `Harshit-sehgal/priced` with `main` as the production branch.
+- The Vercel project currently has no environment variables configured; Supabase, Dodo Test Mode, and Upstash wiring remain owner-gated until credentials are available.
+- Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
+
 ## Do not redo
 
 Do not recreate Supabase.
