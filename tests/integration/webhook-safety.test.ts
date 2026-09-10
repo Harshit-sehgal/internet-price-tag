@@ -12,6 +12,8 @@ import {
   createQuote,
   getQuote,
   recordPaymentEvent,
+  getPaymentEvent,
+  markPaymentEventStatus,
   setQuoteCheckout,
   finalizeTakeover,
   getDomain,
@@ -57,6 +59,22 @@ test("recordPaymentEvent duplicate throws a unique violation; other errors are n
   }
   assert.ok(dup, "duplicate delivery must throw");
   assert.equal(isUniqueViolation(dup), true, "duplicate must classify as unique violation");
+});
+
+test("payment event errors remain retryable while terminal statuses stay observable", async () => {
+  await recordPaymentEvent({
+    provider: "demo",
+    providerEventId: "evt-retry-1",
+    providerPaymentId: "pi-retry-1",
+    eventType: "payment.succeeded",
+    status: "received",
+  });
+
+  await markPaymentEventStatus("demo", "evt-retry-1", "error", "refund_failed");
+  assert.equal((await getPaymentEvent("demo", "evt-retry-1"))?.status, "error");
+
+  await markPaymentEventStatus("demo", "evt-retry-1", "processed");
+  assert.equal((await getPaymentEvent("demo", "evt-retry-1"))?.status, "processed");
 });
 
 test("one quote reuses one checkout session (first-writer-wins)", async () => {
