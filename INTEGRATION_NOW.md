@@ -24,11 +24,11 @@ This file is the current authority for the next execution phase and overrides ol
 - The existing Vercel project was reused and renamed from `internet-price-tag` to `priced` without creating a duplicate.
 - The stable production alias is `https://internet-price-tag.vercel.app` and is connected to the renamed `priced` Vercel project.
 - Vercel Git deployment remains connected to `Harshit-sehgal/priced` with `main` as the production branch.
-- The stable Production environment has `NEXT_PUBLIC_APP_URL`, the three Supabase variables, and the four Dodo Test Mode variables configured. Ordinary Preview deployments remain demo-only and do not receive privileged credentials.
+- The stable Production environment has `NEXT_PUBLIC_APP_URL`, the three Supabase variables, the four Dodo Test Mode variables, and the two Upstash Redis variables configured. Ordinary Preview deployments remain demo-only and do not receive privileged credentials.
 - Supabase Site URL is `https://internet-price-tag.vercel.app` and the `/auth/callback` redirect is configured. Google Auth Platform branding and a Web OAuth client are configured for `Priced`; Supabase Google sign-in is enabled, and a real browser login returned through the callback to Priced's welcome/handle setup page.
 - Dodo Test Mode contains the approved `Priced Takeover` Pay What You Want product with a $5 minimum and a signed webhook endpoint at `https://internet-price-tag.vercel.app/api/webhooks/payments`. No live mode or real-money configuration has been enabled.
 - Production liveness and Supabase readiness checks pass: `/api/health` returns `ok: true`, and `/api/health?check=db` returns `datastore: supabase` and `db: ok`.
-- A new free-tier Upstash account was checked and its designated `priced-beta-redis` database was created in N. California (`us-west-1`). The existing `promptpay-staging-redis` database in the other account was left untouched. Vercel wiring is pending the owner's just-in-time confirmation before transmitting the REST URL and write token.
+- A new free-tier Upstash account was checked and its designated `priced-beta-redis` database was created in N. California (`us-west-1`). The existing `promptpay-staging-redis` database in the other account was left untouched. Its REST URL and write token are configured only in Vercel Production, and a fresh Production deployment completed successfully.
 - Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
 
 ## Do not redo
@@ -69,8 +69,8 @@ Do not create paid infrastructure without explicit owner approval.
 ### Track C: Upstash and operational checks
 
 1. Create one free Upstash Redis database for the designated beta environment. **Implemented** (`priced-beta-redis`, Free Tier, `us-west-1`).
-2. Configure the REST URL/token only in that environment. **Owner blocked** pending explicit confirmation immediately before transmitting the credentials to Vercel Production.
-3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances.
+2. Configure the REST URL/token only in that environment. **Implemented** in Vercel Production; the token is stored as a Secret and the URL as a Config variable.
+3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances. **Pending** authenticated hosted exercise.
 4. Use free logs and free uptime checks initially.
 5. Check `/api/health` and `/api/health?check=db`.
 6. Watch structured critical events during sandbox testing.
