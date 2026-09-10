@@ -24,7 +24,7 @@ This file is the current authority for the next execution phase and overrides ol
 - The existing Vercel project was reused and renamed from `internet-price-tag` to `priced` without creating a duplicate.
 - The stable production alias is currently `https://internet-price-tag.vercel.app` and serves the main deployment in demo mode.
 - Vercel Git deployment remains connected to `Harshit-sehgal/priced` with `main` as the production branch.
-- The Vercel project currently has no environment variables configured; Supabase, Dodo Test Mode, and Upstash wiring remain owner-gated until credentials are available.
+- The stable Production environment has the non-sensitive `NEXT_PUBLIC_APP_URL` set to the stable alias. No privileged environment variables are configured yet; Supabase, Dodo Test Mode, and Upstash wiring remain owner-gated until credentials are available.
 - Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
 
 ## Do not redo
