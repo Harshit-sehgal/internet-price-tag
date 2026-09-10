@@ -1,39 +1,38 @@
-# Dodo Payments Compliance Gate
+# Dodo Payments Integration Status
 
-This is a hard gate for live payments.
+Product eligibility is confirmed by the owner. Dodo Payments is the approved primary launch payment provider for Priced.
 
-Priced currently describes itself as a competitive internet game where users pay to become the temporary symbolic holder of familiar domain names. The purchase does not transfer the real domain, DNS, trademark, company, IP, equity, or legal ownership.
+Do not repeat the product-classification investigation unless Dodo changes its decision or requests additional review.
 
-Dodo Payments' current Merchant Acceptance Policy explicitly lists `Gaming and virtual-goods environments` among businesses it cannot support. Its examples include games of skill, online games, in-game currencies, digital item sales, game boosters, and private servers.
+## Current objective
 
-Because Priced is close to that category, agents must not assume live Dodo approval merely because Test Mode works technically.
+Integrate Dodo Payments end to end, first in Test Mode, then prepare Live Mode without enabling real charges until the staging gate is green.
 
-## Required action before live mode
+Priced sells temporary symbolic holder status for a domain tag inside Priced. It does not transfer the real domain, DNS control, trademark rights, company ownership, equity, affiliation, endorsement, or authority to represent the real domain owner.
 
-Contact Dodo Payments compliance using an accurate description of Priced and request written confirmation that the product is permitted.
+There are no user payouts, cash prizes, betting outcomes, chance mechanics, withdrawals, investment returns, resale royalties, or user-to-user fund transfers.
 
-Do not rename or misclassify the product to evade the policy.
+Priced Credits remain disabled.
 
-Include these facts in the request:
+## Required integration work
 
-1. Priced is a competitive internet product built around public symbolic holder status for domain names.
-2. A user pays the displayed takeover price to replace the current symbolic holder inside Priced.
-3. The user receives a public holder profile, provenance entry, CTA placement, sharing features, and holder analytics.
-4. The real domain and all legal rights remain with their actual owners.
-5. There are no cash prizes, betting outcomes, chance mechanics, withdrawals, investment returns, resale royalties, or user to user payouts.
-6. Priced itself receives the checkout payment. It does not hold or forward funds for another seller.
-7. Priced Credits are disabled and have no monetary value.
+1. Use Dodo Test Mode first.
+2. Create or reuse the approved Single Payment product with Pay What You Want enabled and a minimum price of $5.
+3. Set the Dodo test API key, product id, mode, and webhook signing key in the designated staging environment only.
+4. Configure the signed webhook endpoint at `https://<stable-staging-origin>/api/webhooks/payments`.
+5. Subscribe to the payment event types used by the implementation and verify them against the current Dodo documentation.
+6. Run real signed Test Mode transactions. Do not substitute unsigned mocks for the final webhook verification.
+7. Verify successful payment, failed payment, cancellation, duplicate webhook, stale quote, wrong amount, simultaneous challengers, automatic stale-payment refund, refund failure, webhook retry, missing metadata, and provider outage behavior.
+8. Confirm exactly one takeover finalizes for a valid paid quote and that losing or stale payments never change ownership.
+9. Confirm refund and idempotency behavior against the real Dodo sandbox API.
+10. Keep Stripe only as an optional adapter. Do not replace Dodo unless a new provider issue appears.
 
-Ask Dodo to answer whether this model is eligible for live processing and, if yes, whether they require a particular tax category, product wording, disclaimer, or enhanced review.
+## Live Mode gate
 
-## Until written confirmation arrives
+After the full staging matrix is green, prepare the Production Dodo configuration using separate live credentials and a production webhook secret.
 
-Dodo Test Mode may be used for engineering verification only.
+Do not put live Dodo credentials in Preview deployments.
 
-Do not activate live keys.
+Do not commit any Dodo API key or webhook secret to GitHub.
 
-Do not accept real payments through Dodo.
-
-Do not make architecture changes whose only purpose is to hide the competitive or game-like nature of Priced.
-
-If Dodo declines the product, record the decision and evaluate another payment provider before public launch.
+Do not enable real-money processing until the remaining production hosting, legal-document, disaster-recovery, and end-to-end launch checks are complete.
