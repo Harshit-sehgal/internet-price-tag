@@ -757,6 +757,41 @@ export async function recordPaymentEvent(ev: {
   });
 }
 
+export async function getPaymentEvent(provider: string, providerEventId: string): Promise<{
+  provider: string;
+  providerEventId: string;
+  providerPaymentId: string;
+  eventType: string;
+  status: string;
+} | null> {
+  if (isProdDatastore) {
+    const { data, error } = await client()
+      .from("payment_events")
+      .select("provider, provider_event_id, provider_payment_id, event_type, status")
+      .eq("provider", provider)
+      .eq("provider_event_id", providerEventId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return {
+      provider: String(data.provider),
+      providerEventId: String(data.provider_event_id),
+      providerPaymentId: String(data.provider_payment_id),
+      eventType: String(data.event_type),
+      status: String(data.status),
+    };
+  }
+  const ev = mem().paymentEvents.get(`${provider}:${providerEventId}`);
+  if (!ev) return null;
+  return {
+    provider: ev.provider,
+    providerEventId: ev.providerEventId,
+    providerPaymentId: ev.providerPaymentId,
+    eventType: ev.eventType,
+    status: ev.status,
+  };
+}
+
 export async function markPaymentEventStatus(provider: string, providerEventId: string, status: "processed" | "ignored" | "error", error?: string): Promise<void> {
   if (isProdDatastore) {
     const { error: err } = await client()

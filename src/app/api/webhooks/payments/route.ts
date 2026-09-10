@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { recordPaymentEvent, markPaymentEventStatus } from "@/lib/repo";
-import { getPaymentProvider } from "@/lib/payments";
+import { getPaymentEvent, isProdDatastore, recordPaymentEvent, markPaymentEventStatus } from "@/lib/repo";
+import { getConfiguredProviderName, getPaymentProvider } from "@/lib/payments";
 import { processSucceededPayment } from "@/lib/takeover";
 import { logEvent } from "@/lib/logger";
 import { isUniqueViolation } from "@/lib/db-errors";
@@ -21,6 +21,12 @@ export const dynamic = "force-dynamic";
  * duplicate; every other DB error returns 500.
  */
 export async function POST(req: Request) {
+  // A real provider must never be allowed to finalize against the in-memory
+  // adapter if a deployment is missing either Supabase production variable.
+  if (getConfiguredProviderName() !== "demo" && !isProdDatastore) {
+    return Response.json({ error: "payment_datastore_not_configured", retryable: false }, { status: 503 });
+  }
+
   const provider = getPaymentProvider();
   const raw = await req.text(); // raw body required for signature verification
   // Webhook payload guard: Dodo/Stripe events are < 64 KiB; reject oversized bodies.
@@ -70,8 +76,38 @@ export async function POST(req: Request) {
       });
       return Response.json({ error: "store_failed", retryable: true }, { status: 500 });
     }
-    logEvent("webhook_duplicate_event", "info", { provider: provider.name, event_id: event.id });
-    return Response.json({ received: true, duplicate: true });
+    try {
+      const existing = await getPaymentEvent(provider.name, event.id);
+      if (!existing) {
+        logEvent("webhook_duplicate_lookup_failed", "error", { provider: provider.name, event_id: event.id });
+        return Response.json({ error: "duplicate_lookup_failed", retryable: true }, { status: 500 });
+      }
+      // Terminal rows are safe to acknowledge. An error row is explicitly
+      // retryable: re-enter processing so a failed finalize/refund can
+      // converge on a later provider delivery instead of being lost forever.
+      if (existing.status === "processed" || existing.status === "ignored") {
+        logEvent("webhook_duplicate_event", "info", { provider: provider.name, event_id: event.id, status: existing.status });
+        return Response.json({ received: true, duplicate: true });
+      }
+      if (existing.status === "received") {
+        // The first delivery is still processing. Acknowledge this concurrent
+        // duplicate so it cannot run the same refund/finalize operation twice.
+        logEvent("webhook_duplicate_in_progress", "info", { provider: provider.name, event_id: event.id });
+        return Response.json({ received: true, duplicate: true, inProgress: true });
+      }
+      if (existing.status !== "error") {
+        logEvent("webhook_duplicate_unknown_status", "error", { provider: provider.name, event_id: event.id, status: existing.status });
+        return Response.json({ error: "duplicate_status_invalid", retryable: true }, { status: 500 });
+      }
+      logEvent("webhook_retry_event", "info", { provider: provider.name, event_id: event.id });
+    } catch (lookupError) {
+      logEvent("webhook_duplicate_lookup_failed", "error", {
+        provider: provider.name,
+        event_id: event.id,
+        detail: lookupError instanceof Error ? lookupError.message : String(lookupError),
+      });
+      return Response.json({ error: "duplicate_lookup_failed", retryable: true }, { status: 500 });
+    }
   }
 
   if (event.status === "succeeded") {

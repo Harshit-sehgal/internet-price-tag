@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getQuote, markQuoteStatus, setQuoteCheckout } from "@/lib/repo";
+import { getQuote, isProdDatastore, markQuoteStatus, setQuoteCheckout } from "@/lib/repo";
 import { getViewer, demoViewer } from "@/lib/auth";
-import { getPaymentProvider } from "@/lib/payments";
+import { getConfiguredProviderName, getPaymentProvider } from "@/lib/payments";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { rateLimit } from "@/lib/ratelimit";
 import { track } from "@/lib/analytics";
@@ -77,6 +77,13 @@ export async function POST(req: Request) {
   if (quote.status === "checkout_created" && quote.checkoutPaymentId) {
     track("checkout_started", { domain: quote.domain, reused: true });
     return NextResponse.json({ checkoutUrl: quote.checkoutUrl, providerPaymentId: quote.checkoutPaymentId, reused: true });
+  }
+
+  // Never accept a real payment while the authoritative datastore is only
+  // partially configured. Without this guard a deployment with a Dodo key
+  // but no service-role key could charge money against the in-memory adapter.
+  if (getConfiguredProviderName() !== "demo" && !isProdDatastore) {
+    return NextResponse.json({ error: "payment_datastore_not_configured" }, { status: 503 });
   }
 
   const provider = getPaymentProvider();
