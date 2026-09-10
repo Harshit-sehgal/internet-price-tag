@@ -318,6 +318,7 @@ export class DodoPaymentsProvider implements PaymentProvider {
       body: JSON.stringify({
         product_cart: [{ product_id: this.productId, quantity: 1, amount: args.amountCents }],
         return_url: args.successUrl,
+        cancel_url: args.cancelUrl,
         billing_currency: process.env.DODO_PAYMENTS_CURRENCY?.trim() || "USD",
         metadata: {
           quote_id: args.quoteId,
@@ -456,8 +457,10 @@ function verifyDodoWebhookSync(
         : typeof data.amount === "number"
           ? data.amount
           : null;
-    const amountCents =
-      Number.isFinite(metaCents) && metaCents > 0 ? metaCents : (totalCents ?? null);
+    // The provider-reported total is authoritative for amount validation.
+    // Metadata is only a fallback for event variants that omit the total;
+    // trusting echoed metadata first would hide a wrong-amount payment.
+    const amountCents = totalCents ?? (Number.isFinite(metaCents) && metaCents > 0 ? metaCents : null);
 
     return {
       ok: true,

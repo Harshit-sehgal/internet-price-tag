@@ -179,6 +179,7 @@ test("dodo checkout posts dynamic PWYW amount + quote metadata, refund posts pay
     const cart = (seen[0].body.product_cart as Array<Record<string, unknown>>)[0];
     assert.equal(cart.product_id, "pdt_test_123");
     assert.equal(cart.amount, 94940);
+    assert.equal(seen[0].body.cancel_url, "https://app.test/domain/openai.com?checkout=cancelled");
     const meta = seen[0].body.metadata as Record<string, string>;
     assert.equal(meta.quote_id, "22222222-2222-4222-8222-222222222222");
     assert.equal(meta.amount_cents, "94940");
@@ -189,6 +190,33 @@ test("dodo checkout posts dynamic PWYW amount + quote metadata, refund posts pay
     assert.equal(seen[1].body.payment_id, "pay_test_001");
   } finally {
     globalThis.fetch = realFetch;
+    restoreEnv(snap);
+  }
+});
+
+test("dodo webhook trusts the provider total over echoed quote metadata", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const secret = process.env.DODO_PAYMENTS_WEBHOOK_KEY!;
+    const provider = new DodoPaymentsProvider();
+    const raw = JSON.stringify({
+      business_id: "biz_test",
+      type: "payment.succeeded",
+      timestamp: new Date().toISOString(),
+      data: {
+        payload_type: "Payment",
+        payment_id: "pay_test_wrong_amount",
+        total_amount: 500,
+        metadata: { quote_id: "33333333-3333-4333-8333-333333333333", amount_cents: "94940" },
+      },
+    });
+    const id = "wh_wrong_amount";
+    const ts = String(Math.floor(Date.now() / 1000));
+    const res = provider.verifyWebhook(raw, signDodo(id, ts, raw, secret), { webhookId: id, webhookTimestamp: ts });
+    assert.ok(res.ok);
+    if (res.ok) assert.equal(res.event.amountCents, 500);
+  } finally {
     restoreEnv(snap);
   }
 });
