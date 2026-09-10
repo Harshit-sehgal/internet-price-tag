@@ -5,6 +5,7 @@ import { getConfiguredProviderName, getPaymentProvider } from "@/lib/payments";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { rateLimit } from "@/lib/ratelimit";
 import { track } from "@/lib/analytics";
+import { logEvent } from "@/lib/logger";
 
 export async function POST(req: Request) {
   // JSON-only: cross-origin form posts cannot produce this content type (§46 CSRF).
@@ -108,6 +109,12 @@ export async function POST(req: Request) {
     track("checkout_started", { domain: quote.domain, provider: provider.name, reused: stored.reused });
     return NextResponse.json({ checkoutUrl: stored.checkoutUrl, providerPaymentId: stored.paymentId, reused: stored.reused });
   } catch (e) {
+    logEvent("checkout_provider_failed", "error", {
+      provider: provider.name,
+      quote_id: quote.id,
+      domain: quote.domain,
+      detail: (e instanceof Error ? e.message : String(e)).slice(0, 500),
+    });
     return NextResponse.json(
       { error: "checkout_failed", detail: e instanceof Error ? e.message : String(e) },
       { status: 502 },
