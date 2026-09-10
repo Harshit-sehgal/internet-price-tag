@@ -7,13 +7,13 @@ const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
   title: {
-    default: "The Internet Price Tag — How much is the internet worth?",
-    template: "%s — The Internet Price Tag",
+    default: "Priced · every domain has a price",
+    template: "%s · Priced",
   },
   description:
     "A public market where people pay to become the temporary symbolic holder of recognizable internet domains. Not the actual domains.",
   openGraph: {
-    siteName: "The Internet Price Tag",
+    siteName: "Priced",
     type: "website",
   },
 };

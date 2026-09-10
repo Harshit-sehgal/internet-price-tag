@@ -1,4 +1,4 @@
-# Internet Price Tag — Supabase config.
+# Priced — Supabase config.
 # The db/ directory is the portable truth (applies to any hosted Postgres).
 # This file makes `npx supabase` happy and documents how migrations are run.
 # Migrations live in supabase/migrations/ (versioned, deterministic).

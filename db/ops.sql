@@ -1,4 +1,4 @@
--- Internet Price Tag — operator moderation toolkit (§48).
+-- Priced — operator moderation toolkit (§48).
 -- Run against production with service-role access. No dashboard required.
 
 -- Audit trail for privileged actions.

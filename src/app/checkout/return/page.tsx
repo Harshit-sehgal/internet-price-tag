@@ -20,7 +20,7 @@ export default async function CheckoutReturnPage({ searchParams }: Params) {
       <p className="muted">
         {quote?.status === "consumed"
           ? "Your payment settled and the takeover is recorded."
-          : "We never treat this redirect as proof of payment. The signed webhook finalizes your takeover — give it a few seconds, then check the domain page."}
+          : "We never treat this redirect as proof of payment. The signed webhook finalizes your takeover. Give it a few seconds, then check the domain page."}
       </p>
       {quote ? (
         <p className="small muted">

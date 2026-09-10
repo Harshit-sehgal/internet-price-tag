@@ -23,6 +23,10 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const provider = getPaymentProvider();
   const raw = await req.text(); // raw body required for signature verification
+  // Webhook payload guard: Dodo/Stripe events are < 64 KiB; reject oversized bodies.
+  if (raw.length > 64 * 1024) {
+    return Response.json({ error: "payload_too_large" }, { status: 413 });
+  }
   const signature =
     req.headers.get("stripe-signature") ??
     req.headers.get("dodo-signature") ??

@@ -1,4 +1,4 @@
--- Internet Price Tag — production market core (Postgres / Supabase)
+-- Priced — production market core (Postgres / Supabase)
 -- Prices are integer cents. Auth/profile/payment-provider wiring is intentionally separate.
 
 create extension if not exists pgcrypto;

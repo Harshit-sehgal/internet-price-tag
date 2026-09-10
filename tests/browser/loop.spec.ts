@@ -18,7 +18,7 @@ test.describe("full takeover loop (demo mode)", () => {
 
     // Server-authoritative quote confirmation page.
     await expect(page).toHaveURL(/\/takeover\//);
-    await expect(page.getByText("First claim — you set the opening price.")).toBeVisible();
+    await expect(page.getByText("First claim. You set the opening price.")).toBeVisible();
     await expect(page.getByText("You are buying:")).toBeVisible();
 
     // Demo checkout (drives the real signed-webhook path).
@@ -30,15 +30,15 @@ test.describe("full takeover loop (demo mode)", () => {
     // Receipt/share destination.
     await expect(page).toHaveURL(/\/success\//, { timeout: 10_000 });
     await expect(page.getByText("Held by @smoketest")).toBeVisible();
-    await expect(page.getByText("symbolic holder status only — not the actual domain")).toBeVisible();
+    await expect(page.getByText("symbolic holder status only. Not the actual domain.")).toBeVisible();
 
     // Share artifacts (§36).
-    await expect(page.getByRole("button", { name: new RegExp(`Post on X — I just took ${domain}`) })).toBeVisible();
+    await expect(page.getByRole("button", { name: new RegExp(`Post on X · I just took ${domain}`) })).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy post" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
 
     // Market now shows the new holder; challenger loop is visible.
-    await page.getByRole("link", { name: "Defend it — view the tag" }).click();
+    await page.getByRole("link", { name: "Defend it · view the tag" }).click();
     await expect(page).toHaveURL(new RegExp(`/domain/${domain}$`));
     await expect(page.getByText("@smoketest").first()).toBeVisible();
     await expect(page.getByRole("button", { name: /Take it for \$10/ })).toBeVisible();
@@ -77,7 +77,7 @@ test.describe("holder profiles (/u/[handle])", () => {
     await page.goto("/u/smoketest");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("@smoketest");
     // Both projects run concurrently, so the count may include the other's claim.
-    await expect(page.getByText(/Currently holds \d+ tags?/)).toBeVisible();
+    await expect(page.getByText(/Holds \d+ tags?/)).toBeVisible();
     // Domain appears in both the holdings and history lists.
     await expect(page.getByRole("link", { name: domain }).first()).toBeVisible();
     await expect(page.getByText("first claim").first()).toBeVisible();

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHmac } from "node:crypto";
 import { rateLimit } from "@/lib/ratelimit";
+import { demoWebhookSecret } from "@/lib/demo-secret";
 
 export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const secret = process.env.DEMO_WEBHOOK_SECRET || "demo-webhook-secret";
+  const secret = demoWebhookSecret();
   const signature = createHmac("sha256", secret).update(payload).digest("hex");
   return NextResponse.json({ signature });
 }

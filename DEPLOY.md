@@ -7,7 +7,7 @@ because they need accounts, credentials and a legal review.
 ## 0. Prerequisites
 
 - This repo with `main` green on CI.
-- A domain for the app itself (e.g. `internetpricetag.com`).
+- A domain for the app itself (e.g. `priced.game`).
 
 ## 1. Supabase (data + auth + realtime)
 

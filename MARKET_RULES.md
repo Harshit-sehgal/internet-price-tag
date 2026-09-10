@@ -1,4 +1,4 @@
-# Internet Price Tag — market rules (V1)
+# Priced market rules (V1)
 
 ## Core price rule
 
@@ -26,7 +26,7 @@ If 1% results in a fraction of a cent, round the percentage increment upward to 
 
 ## What a payment buys
 
-A successful payment changes only the public symbolic holder shown by Internet Price Tag. It does not transfer the real domain, website, company, trademark, IP, equity, DNS control, or any right to represent the underlying entity.
+A successful payment changes only the public symbolic holder shown by Priced. It does not transfer the real domain, website, company, trademark, IP, equity, DNS control, or any right to represent the underlying entity.
 
 ## Canonical domain identity
 

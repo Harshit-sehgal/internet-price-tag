@@ -15,7 +15,7 @@ export async function SiteHeader() {
       <div className="shell site-header-inner">
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", flex: 1, minWidth: 0 }}>
           <Link href="/" className="wordmark">
-            The Internet <span className="tick">Price&nbsp;Tag</span>
+            Priced<span className="tick">.</span>
           </Link>
         </div>
         <nav style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>

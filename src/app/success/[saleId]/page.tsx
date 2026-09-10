@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { sale } = data;
   return {
     title: `@${sale.buyerHandle} took ${sale.domain} for ${money(sale.priceCents)}`,
-    description: `@${sale.buyerHandle} just became the symbolic holder of ${sale.domain}'s Internet Price Tag for ${money(sale.priceCents)}. Not the actual domain.`,
+    description: `@${sale.buyerHandle} just took the ${sale.domain} tag on Priced for ${money(sale.priceCents)}. Not the actual domain.`,
     openGraph: {
       title: `@${sale.buyerHandle} took ${sale.domain} for ${money(sale.priceCents)}`,
       description: "not the actual domain lol",
@@ -45,7 +45,7 @@ export default async function SuccessPage({ params, searchParams }: Params & { s
     const sp = await searchParams;
     if (sp.via === "share" || sp.via === "x") {
       const { track } = await import("@/lib/analytics");
-      track("share_visit", { saleId, via: String(sp.via) });
+      track("share_visit", { saleId, via: String(sp.via), domain: data.sale.domain, handle: data.sale.buyerHandle });
     }
   }
 
@@ -84,7 +84,7 @@ export default async function SuccessPage({ params, searchParams }: Params & { s
           ) : null}
         </p>
         <p className="small muted" style={{ margin: 0 }}>
-          symbolic holder status only — not the actual domain
+          symbolic holder status only. Not the actual domain.
         </p>
         {stillHolder ? (
           <p className="small" style={{ margin: 0 }}>
@@ -112,7 +112,7 @@ export default async function SuccessPage({ params, searchParams }: Params & { s
       </section>
 
       <div className="row-split">
-        <Link href={`/domain/${sale.domain}`} className="btn">Defend it — view the tag</Link>
+        <Link href={`/domain/${sale.domain}`} className="btn">Defend it · view the tag</Link>
         <Link href="/" className="btn btn-primary">Back to the market</Link>
       </div>
     </div>

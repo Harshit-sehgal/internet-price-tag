@@ -35,6 +35,9 @@ export type RepoProfile = {
   handle: string;
   displayName: string | null;
   avatarUrl: string | null;
+  bio: string | null;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
   suspendedAt: string | null;
 };
 
@@ -228,20 +231,138 @@ export async function listMostContested(limit = 6): Promise<Array<{ domain: stri
     .map(([domain]) => domain);
   if (domains.length === 0) return [];
 
-  const rows = await Promise.all(domains.map((d) => getDomain(d)));
   // Reserved domains must not surface in discovery (§7/§38) even if they have
-  // history — evaluate static blocklist synchronously and DB list async.
+  // history. Static blocklist is synchronous; the DB list is one batched read.
   const { evaluateDomain } = await import("./domains.ts");
-  const reservedFlags = await Promise.all(
-    domains.map(async (d) => evaluateDomain(d).reason === "reserved" || (isProdDatastore ? await isReservedInDb(d) : false)),
+  const dbReserved = isProdDatastore ? await listReservedInDb(domains) : new Set<string>();
+  const live = domains.filter(
+    (domain) => evaluateDomain(domain).reason !== "reserved" && !dbReserved.has(domain),
   );
-  return domains.flatMap((domain, i) => {
-    if (reservedFlags[i]) return [];
-    const row = rows[i];
-    return row && row.holderUserId
-      ? [{ domain, sales: counts.get(domain)?.count ?? 0, priceCents: row.priceCents, holderHandle: row.holderHandle! }]
+
+  // Batched fetch of live market state — one query instead of one per domain.
+  const rows = await listDomainsByNames(live);
+  return live.flatMap((domain) => {
+    const row = rows.get(domain);
+    const count = counts.get(domain)?.count ?? 0;
+    return row && row.holderUserId && row.holderHandle
+      ? [{ domain, sales: count, priceCents: row.priceCents, holderHandle: row.holderHandle }]
       : [];
   });
+}
+
+/** Batched reserved-domain lookup (one query for a domain set). */
+async function listReservedInDb(domains: string[]): Promise<Set<string>> {
+  if (!isProdDatastore || domains.length === 0) return new Set();
+  try {
+    const { data } = await client().from("reserved_domains").select("domain").in("domain", domains);
+    return new Set((data ?? []).map((row) => String(row.domain)));
+  } catch {
+    // If the reserved_domains table is missing, fail open but log.
+    return new Set();
+  }
+}
+
+/** One batched read for live domain rows (replaces per-domain getDomain N+1). */
+async function listDomainsByNames(domains: string[]): Promise<Map<string, RepoDomain>> {
+  if (domains.length === 0) return new Map();
+  if (!isProdDatastore) {
+    const m = mem();
+    return new Map(domains.map((d) => [d, m.domains.get(d) ?? null]).filter(([, v]) => v !== null) as Array<[string, RepoDomain]>);
+  }
+  const { data, error } = await client().from("domains").select("*").in("domain", domains);
+  if (error) throw error;
+  const out = new Map<string, RepoDomain>();
+  for (const row of data ?? []) {
+    const d = toDomain(row);
+    out.set(d.domain, d);
+  }
+  return out;
+}
+
+/**
+ * Fastest Rising (§12): biggest absolute price increase from a sale within
+ * the window, computed from the immutable ledger (real data only). Ranks by
+ * (price - previous_price) among recent sales, then joins live market state.
+ */
+export async function listFastestRising(limit = 5, windowMs = 7 * 24 * 60 * 60 * 1000): Promise<Array<{ domain: string; roseCents: number; priceCents: number; holderHandle: string }>> {
+  const since = new Date(Date.now() - windowMs).toISOString();
+  // First claims (previous price 0) are excluded: a "rise" means a challenger
+  // moved the price, not that the tag opened at $5.
+  let candidates: Array<{ domain: string; roseCents: number }> = [];
+
+  if (!isProdDatastore) {
+    candidates = mem()
+      .sales.filter((s) => s.createdAt >= since && s.previousPriceCents > 0)
+      .map((s) => ({ domain: s.domain, roseCents: s.priceCents - s.previousPriceCents }))
+      .filter((s) => s.roseCents > 0);
+  } else {
+    const { data, error } = await client()
+      .from("sales")
+      .select("domain, price_cents, previous_price_cents, created_at")
+      .gte("created_at", since)
+      .gt("previous_price_cents", 0)
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    candidates = (data ?? [])
+      .map((row) => ({
+        domain: String(row.domain),
+        roseCents: Number(row.price_cents) - Number(row.previous_price_cents),
+      }))
+      .filter((s) => s.roseCents > 0);
+  }
+
+  // Aggregate per domain (best rise in window), rank by rise DESC.
+  // First claims (previous price 0) are excluded: a "rise" means a
+  // challenger moved the price, not that the tag opened at $5.
+  const best = new Map<string, number>();
+  for (const c of candidates) {
+    const cur = best.get(c.domain) ?? 0;
+    if (c.roseCents > cur) best.set(c.domain, c.roseCents);
+  }
+  const top = [...best.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([domain]) => domain);
+  if (top.length === 0) return [];
+
+  const rows = await listDomainsByNames(top);
+  return top.flatMap((domain) => {
+    const row = rows.get(domain);
+    const rose = best.get(domain) ?? 0;
+    return row && row.holderUserId && row.holderHandle && rose > 0
+      ? [{ domain, roseCents: rose, priceCents: row.priceCents, holderHandle: row.holderHandle }]
+      : [];
+  });
+}
+
+/**
+ * Newly Claimed (§12): first claims (previous_price = 0), newest first.
+ * Honest by construction: the ledger only records real first claims.
+ */
+export async function listNewlyClaimed(limit = 5): Promise<Array<{ domain: string; priceCents: number; holderHandle: string; createdAt: string }>> {
+  let rows: Array<{ domain: string; priceCents: number; buyerHandle: string; createdAt: string }>;
+  if (!isProdDatastore) {
+    rows = mem()
+      .sales.filter((s) => s.previousPriceCents === 0)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+      .map((s) => ({ domain: s.domain, priceCents: s.priceCents, buyerHandle: s.buyerHandle, createdAt: s.createdAt }));
+    return rows.map((r) => ({ domain: r.domain, priceCents: r.priceCents, holderHandle: r.buyerHandle, createdAt: r.createdAt }));
+  }
+  const { data, error } = await client()
+    .from("sales")
+    .select("domain, price_cents, buyer_handle, created_at")
+    .eq("previous_price_cents", 0)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    domain: String(row.domain),
+    priceCents: Number(row.price_cents),
+    holderHandle: String(row.buyer_handle),
+    createdAt: String(row.created_at),
+  }));
 }
 
 export async function listRecentSales(limit = 20): Promise<RepoSale[]> {
@@ -289,7 +410,7 @@ export async function getProfileByHandle(handle: string): Promise<RepoProfile | 
   const { data, error } = await client().from("profiles").select("*").eq("handle", h).maybeSingle();
   if (error) throw error;
   return data
-    ? { id: data.id, handle: data.handle, displayName: data.display_name, avatarUrl: data.avatar_url, suspendedAt: data.suspended_at }
+    ? { id: data.id, handle: data.handle, displayName: data.display_name, avatarUrl: data.avatar_url, bio: data.bio ?? null, ctaLabel: data.cta_label ?? null, ctaUrl: data.cta_url ?? null, suspendedAt: data.suspended_at }
     : null;
 }
 
@@ -301,7 +422,7 @@ export async function getProfileById(id: string): Promise<RepoProfile | null> {
   const { data, error } = await client().from("profiles").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
   return data
-    ? { id: data.id, handle: data.handle, displayName: data.display_name, avatarUrl: data.avatar_url, suspendedAt: data.suspended_at }
+    ? { id: data.id, handle: data.handle, displayName: data.display_name, avatarUrl: data.avatar_url, bio: data.bio ?? null, ctaLabel: data.cta_label ?? null, ctaUrl: data.cta_url ?? null, suspendedAt: data.suspended_at }
     : null;
 }
 
@@ -543,7 +664,14 @@ export async function finalizeTakeover(input: FinalizeInput): Promise<TakeoverOu
 export async function upsertProfile(id: string, handle: string, displayName: string | null, avatarUrl: string | null): Promise<RepoProfile> {
   const h = handle.toLowerCase();
   if (!isProdDatastore) {
-    const profile: RepoProfile = { id, handle: h, displayName, avatarUrl, suspendedAt: null };
+    const existing = mem().profiles.get(h);
+    const profile: RepoProfile = {
+      id, handle: h, displayName, avatarUrl,
+      bio: existing?.bio ?? null,
+      ctaLabel: existing?.ctaLabel ?? null,
+      ctaUrl: existing?.ctaUrl ?? null,
+      suspendedAt: null,
+    };
     mem().profiles.set(h, profile);
     return profile;
   }
@@ -553,7 +681,39 @@ export async function upsertProfile(id: string, handle: string, displayName: str
     .select("*")
     .single();
   if (error) throw error;
-  return { id: data.id, handle: data.handle, displayName: data.display_name, avatarUrl: data.avatar_url, suspendedAt: data.suspended_at };
+  return { id: data.id, handle: data.handle, displayName: data.display_name, avatarUrl: data.avatar_url, bio: data.bio ?? null, ctaLabel: data.cta_label ?? null, ctaUrl: data.cta_url ?? null, suspendedAt: data.suspended_at };
+}
+
+/**
+ * Holder-authored profile extras (bio + CTA). Validated upstream in
+ * /api/profile; this layer only persists. Handle is immutable and is NOT
+ * writable here.
+ */
+export async function updateProfileExtras(args: {
+  id: string;
+  bio: string | null;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+}): Promise<RepoProfile | null> {
+  if (!isProdDatastore) {
+    const m = mem();
+    for (const [h, p] of m.profiles) {
+      if (p.id === args.id) {
+        const updated: RepoProfile = { ...p, bio: args.bio, ctaLabel: args.ctaLabel, ctaUrl: args.ctaUrl };
+        m.profiles.set(h, updated);
+        return updated;
+      }
+    }
+    return null;
+  }
+  const { data, error } = await client()
+    .from("profiles")
+    .update({ bio: args.bio, cta_label: args.ctaLabel, cta_url: args.ctaUrl })
+    .eq("id", args.id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data ? { id: data.id, handle: data.handle, displayName: data.display_name, avatarUrl: data.avatar_url, bio: data.bio ?? null, ctaLabel: data.cta_label ?? null, ctaUrl: data.cta_url ?? null, suspendedAt: data.suspended_at } : null;
 }
 
 // ------------------------------------------------------------- payment events
@@ -664,7 +824,7 @@ export function seedDemoMarket(items: Array<{ domain: string; holderHandle: stri
     });
     m.sales.push(sale);
     if (!m.profiles.has(handle)) {
-      m.profiles.set(handle, { id: userId, handle, displayName: null, avatarUrl: null, suspendedAt: null });
+      m.profiles.set(handle, { id: userId, handle, displayName: null, avatarUrl: null, bio: null, ctaLabel: null, ctaUrl: null, suspendedAt: null });
     }
   }
 }

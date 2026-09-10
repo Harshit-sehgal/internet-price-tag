@@ -17,7 +17,7 @@ export default function RefundsPage() {
       <p>
         A completed takeover is generally <strong>not refundable</strong> because somebody later
         took the tag. You purchased temporary holder status, and its duration was intentionally not
-        guaranteed — that is the game.
+        guaranteed. That is the game.
       </p>
 
       <h2 className="display" style={{ fontSize: 18 }}>Errors and disputes</h2>

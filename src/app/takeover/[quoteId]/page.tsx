@@ -26,7 +26,7 @@ export default async function TakeoverPage({ params }: Params) {
     return (
       <div className="stack">
         <h1 className="display display-section">This quote was already used.</h1>
-        <p className="muted">If you paid, your takeover is recorded — check the domain page.</p>
+        <p className="muted">If you paid, your takeover is recorded. Check the domain page.</p>
         <Link href={`/domain/${quote.domain}`} className="btn">View {quote.domain}</Link>
       </div>
     );
@@ -67,7 +67,7 @@ export default async function TakeoverPage({ params }: Params) {
           </p>
         ) : (
           <p className="muted" style={{ margin: 0 }}>
-            First claim — you set the opening price.
+            First claim. You set the opening price.
           </p>
         )}
       </section>
@@ -98,7 +98,7 @@ export default async function TakeoverPage({ params }: Params) {
 
       <section className="notice">
         <strong>You are buying:</strong> temporary symbolic holder status for {quote.domain}&apos;s
-        Internet Price Tag on this website. Not the domain registration, not DNS, not the company,
+        tag on Priced. Not the domain registration, not DNS, not the company,
         not equity, not affiliation. Once taken, a tag is not refundable merely because somebody
         later takes it from you.
       </section>

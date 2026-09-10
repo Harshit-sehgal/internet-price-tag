@@ -62,7 +62,7 @@ function LoginInner() {
   return (
     <div className="stack" style={{ maxWidth: 480 }}>
       <p className="eyebrow">Authentication</p>
-      <h1 className="display display-section">Hold on — prices move fast.</h1>
+      <h1 className="display display-section">Hold on. Prices move fast.</h1>
       <p className="muted">
         Log in to take tags. Browsing stays free and anonymous.
       </p>
@@ -79,7 +79,7 @@ function LoginInner() {
       </button>
       <div className="row-split small muted"><span>or</span></div>
       <form className="field" onSubmit={loginWithMagicLink}>
-        <label htmlFor="email">Email — magic link</label>
+        <label htmlFor="email">Email · magic link</label>
         <input
           id="email"
           type="email"

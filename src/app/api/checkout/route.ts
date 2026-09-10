@@ -26,9 +26,22 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "login_required" }, { status: 401 });
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const rlUser = await rateLimit(`checkout:${user.id}`, 6, 60_000);
-  const rlIp = await rateLimit(`checkout:ip:${ip}`, 12, 60_000);
+  const rlUser = await rateLimit(`checkout:${user.id}`, 20, 60_000);
+  const rlIp = await rateLimit(`checkout:ip:${ip}`, 30, 60_000);
   if (!rlUser || !rlIp) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+
+  // Body size guard before JSON parse (abuse/DoS).
+  const rawBody = await req.text().catch(() => "");
+  if (rawBody.length > 4_096) return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
+  let body: { quoteId?: string; turnstileToken?: unknown } = {};
+  try {
+    body = JSON.parse(rawBody || "{}") as { quoteId?: string; turnstileToken?: unknown };
+  } catch {
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+  }
+  const quoteId: string | undefined = body.quoteId;
+  const turnstileToken: unknown = body.turnstileToken;
+  if (!quoteId) return NextResponse.json({ error: "quoteId_required" }, { status: 400 });
 
   // Suspended buyers can still reach this endpoint after the quote was created;
   // enforce here too so the provider never receives a tainted checkout.
@@ -37,17 +50,6 @@ export async function POST(req: Request) {
   if (viewerProfile?.suspendedAt) {
     return NextResponse.json({ code: "SUSPENDED", error: "account suspended" }, { status: 403 });
   }
-
-  let quoteId: string | undefined;
-  let turnstileToken: unknown;
-  try {
-    const body = (await req.json()) as { quoteId?: string; turnstileToken?: unknown };
-    quoteId = body.quoteId;
-    turnstileToken = body.turnstileToken;
-  } catch {
-    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
-  }
-  if (!quoteId) return NextResponse.json({ error: "quoteId_required" }, { status: 400 });
 
   // Bot protection (§45): fail closed when Turnstile is configured.
   const turnstile = await verifyTurnstile(turnstileToken, ip === "unknown" ? null : ip);

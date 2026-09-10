@@ -9,7 +9,7 @@ export default function TermsPage() {
 
       <h2 className="display" style={{ fontSize: 18 }}>What this product is</h2>
       <p>
-        The Internet Price Tag is a public game. A payment buys <strong>temporary symbolic holder
+        Priced is a public game. A payment buys <strong>temporary symbolic holder
         status</strong> for a domain&apos;s price tag shown on this website, until another user pays
         the required next price.
       </p>
@@ -30,7 +30,7 @@ export default function TermsPage() {
 
       <h2 className="display" style={{ fontSize: 18 }}>No payouts</h2>
       <p>
-        When your tag is taken, the previous holder — you — receives nothing. This is not an
+        When your tag is taken, the previous holder receives nothing. This is not an
         investment, resale, or revenue-sharing product.
       </p>
 

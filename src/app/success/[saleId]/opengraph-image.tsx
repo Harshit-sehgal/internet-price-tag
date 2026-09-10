@@ -1,14 +1,28 @@
 import { ImageResponse } from "next/og";
-import { money } from "@/lib/game.ts";
-import { getSale } from "@/lib/repo";
+import { money, quoteFor } from "@/lib/game.ts";
+import { getSale, getDomain } from "@/lib/repo";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "Takeover receipt";
+export const alt = "Priced receipt";
+
+const appHost = process.env.NEXT_PUBLIC_APP_URL
+  ? new URL(process.env.NEXT_PUBLIC_APP_URL).host
+  : "priced.game";
 
 export default async function SaleOgImage({ params }: { params: Promise<{ saleId: string }> }) {
   const { saleId } = await params;
   const sale = await getSale(saleId);
+  const current = sale ? await getDomain(sale.domain) : null;
+  // Next challenge price only when the buyer still holds the tag.
+  const stillHolds = !!(sale && current && current.holderUserId === sale.buyerUserId);
+  const next = current ? quoteFor({
+    domain: sale!.domain,
+    holder: current.holderHandle,
+    priceCents: current.priceCents,
+    version: current.version,
+    history: [],
+  }) : null;
 
   return new ImageResponse(
     (
@@ -26,23 +40,32 @@ export default async function SaleOgImage({ params }: { params: Promise<{ saleId
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 22, letterSpacing: 4, color: "#cdc8ba" }}>
-          <span>THE INTERNET PRICE TAG</span>
+          <span style={{ color: "#7ee2b1", fontWeight: 700 }}>PRICED</span>
           <span>NOT THE ACTUAL DOMAIN</span>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ fontSize: 88, fontWeight: 700 }}>{sale?.domain ?? "unknown"}</div>
-          <div style={{ fontSize: 132, fontWeight: 700, color: "#7ee2b1" }}>
-            {sale ? money(sale.priceCents) : "—"}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 84, fontWeight: 700 }}>{sale?.domain ?? "unknown"}</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 28 }}>
+            <span style={{ fontSize: 120, fontWeight: 700, color: "#7ee2b1" }}>
+              {sale ? money(sale.priceCents) : "—"}
+            </span>
+            <span style={{ fontSize: 38 }}>
+              {sale ? `taken by @${sale.buyerHandle}` : "receipt not found"}
+            </span>
           </div>
-          <div style={{ fontSize: 40 }}>
-            {sale ? `just taken by @${sale.buyerHandle}` : "receipt not found"}
+          <div style={{ fontSize: 30, color: "#cdc8ba" }}>
+            {sale
+              ? stillHolds
+                ? `next challenge: ${money(next!.nextPriceCents)} · anyone can take it`
+                : `taken from @${sale.previousHolderHandle ?? "nobody"} · now held by @${current?.holderHandle ?? "nobody"}`
+              : ""}
           </div>
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 26, borderTop: "4px solid #f4f1ea", paddingTop: 20 }}>
           <span>THINK YOU CAN TAKE IT?</span>
-          <span>internetpricetag.game</span>
+          <span>{appHost}</span>
         </div>
       </div>
     ),
