@@ -2,7 +2,7 @@
 
 > Money-handling repo. Changes to payment, DB and rate-limiting code must not
 > bypass CI. This doc is the checklist for whoever has admin on
-> `Harshit-sehgal/internet-price-tag`. It takes ~3 minutes in the GitHub UI.
+> `Harshit-sehgal/priced`. It takes ~3 minutes in the GitHub UI.
 
 ## Required settings (Settings → Branches → Add rule for `main`)
 
@@ -20,8 +20,8 @@
 Verify with the CLI (needs `gh` auth):
 
 ```bash
-gh api repos/Harshit-sehgal/internet-price-tag/branches/main/protection --jq .
-gh api repos/Harshit-sehgal/internet-price-tag/rulesets --jq '.[].name'
+gh api repos/Harshit-sehgal/priced/branches/main/protection --jq .
+gh api repos/Harshit-sehgal/priced/rulesets --jq '.[].name'
 ```
 
 ## CI is the gate

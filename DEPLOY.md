@@ -45,6 +45,28 @@ because they need accounts, credentials and a legal review.
 
 ## 3. Vercel (hosting)
 
+> **Project rename (owner action):** the Vercel project is currently named
+> `internet-price-tag` (project id `prj_uOsxAmofMbpp5spVp32YRINEKYys`,
+> linked via `.vercel/project.json`). Rename it so deployments, dashboards
+> and status checks correspond to Priced:
+>
+> 1. Log in at vercel.com → team → project `internet-price-tag` →
+>    Settings → General → **Project Name** → change to `priced`.
+> 2. Renaming preserves: GitHub integration (repo is already `priced`),
+>    env variables, domains, deployments, and commit status checks. The old
+>    `*.vercel.app` project subdomain changes to the new name — any doc that
+>    references the old subdomain must be updated (none do today).
+> 3. After renaming, run `vercel link --yes` locally to refresh
+>    `.vercel/project.json` (it stores the project name).
+>
+> Renaming via CLI (requires a fresh login: the stored CLI token on this
+> machine is expired):
+>
+> ```bash
+> vercel login
+> vercel project rename priced --scope <your-team>
+> ```
+
 1. Import the repo into Vercel; framework auto-detects Next.js.
 2. Add the custom domain and update Supabase redirect URLs to match.
 3. Set environment variables for **Production** and separately for
@@ -114,12 +136,67 @@ Alert on any of these at level `error`:
 - `webhook_store_failed` / `webhook_processing_failed` — webhook returned 500
   and the provider will retry; investigate if repeated.
 - `webhook_signature_invalid` spikes — possible misconfigured secret or abuse.
+- `payment_amount_mismatch` — paid amount differs from the quoted price;
+  the payment is auto-refunded, but a spike means tampering or a pricing bug.
+- `payment_succeeded_takeover_stale` — a paid challenger lost the race; a
+  spike means quotes are expiring before payment completes (raise urgency
+  if checkout conversion drops alongside).
+- `payment_already_holder` / `payment_wrong_price` — correct rejections, but
+  repeated occurrences from one account suggest scripted abuse.
+- `webhook_payment_unknown_quote` — payments arriving for quotes that do not
+  exist; can indicate stale test events pointed at the wrong environment.
+
+Uptime checks (owner, any provider):
+
+- `GET /api/health` every 60s → expect `200 {"ok":true}`.
+- `GET /api/health?check=db` every 300s → expect `200`; alerts on `503`
+  mean the service role cannot reach Postgres.
+
+5xx rate alerting (Vercel Log Drain or Sentry): alert when 5xx responses
+per minute exceed 5 for 5 consecutive minutes. The webhook route uses 500
+intentionally for retryable failures, so separate webhook-path 500s from
+page-route 5xx in the query when possible.
+
+Log-drain query patterns (Vercel JSON log fields):
+
+- refund failures:        `level="error" AND event="refund_failed"`
+- finalizer failures:     `level="error" AND event="takeover_finalization_error"`
+- signature failures:     `level="warn"  AND event="webhook_signature_invalid"` (rate > N/hour)
+- amount mismatches:      `level="error" AND event="payment_amount_mismatch"`
+- stale takeover losses:  `level="warn"  AND event="payment_succeeded_takeover_stale"` (rate > N/hour)
+- store failures:         `level="error" AND event IN ("webhook_store_failed","webhook_processing_failed")`
 
 Triage queries: filter by `payment_id`, `quote_id`, `event_id` — every event
 carries them. `payment_events.payload_hash` correlates retried deliveries.
-Never log raw webhook bodies or secrets; only hashes and ids.
+Never log raw webhook bodies or secrets; only hashes and ids. Sentry (when
+`SENTRY_DSN` is set) receives the same `event` name and sanitized tags —
+no payload bodies, no secrets.
 
-## 9. IDN / eligibility limits (V1)
+## 9. Analytics retention and privacy
+
+`analytics_events` rows contain: event name, optional handle, optional
+domain, optional per-tab session id, sanitized props (primitives only, no
+secret/token/password/email keys), timestamp. No IPs, no emails, no user
+agents, no payment payloads (webhook bodies are reduced to a SHA-256 hash
+in `payment_events`).
+
+Retention: analytics rows are kept indefinitely for now. If the table grows
+past a few million rows, run (Quarterly, as an ops task):
+
+```sql
+delete from public.analytics_events
+where created_at < now() - interval '180 days'
+  and event in ('homepage_viewed','domain_searched','domain_opened');
+```
+
+Holder-facing metrics (tag views, sessions, share visits, CTA clicks) use a
+30-day window in queries, so pruning old rows beyond 180 days loses nothing
+the product displays. Sales/ledger rows are NEVER pruned (immutable history).
+
+The per-tab session id is `sessionStorage`-backed: it dies with the tab,
+persists nowhere else, and cannot track a person across sessions or devices.
+
+## 10. IDN / eligibility limits (V1)
 
 - V1 intentionally limits eligible suffixes to the `ALLOWED_SUFFIXES` allowlist in `src/lib/domains.ts` and **rejects IDN/punycode** (`xn--`) to avoid homograph/display ambiguity. Document this limit before launch; a future migration can add IDNA2008 + confusable analysis when ready.
 

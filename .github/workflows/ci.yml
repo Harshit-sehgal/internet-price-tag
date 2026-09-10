@@ -54,11 +54,16 @@ jobs:
           test -f supabase/migrations/20260908000001_market_core.sql
           test -f supabase/migrations/20260908000002_identity_quotes_observability.sql
           test -f supabase/migrations/20260909000001_analytics_events.sql
+          test -f supabase/migrations/20260910000001_priced_profiles.sql
+          test -f supabase/migrations/20260910000002_credit_ledger.sql
+          test -f supabase/migrations/20260910000003_holder_analytics_rpc.sql
           test -f supabase/config.toml
           test -f supabase/migrations/README.md
           # Portable files must stay equivalent to the migration history.
           test -f db/schema.sql
           test -f db/schema-extended.sql
+          grep -q "holder_analytics" db/schema-extended.sql
+          grep -q "credit_ledger" db/schema-extended.sql
           echo "migrations structure checks passed"
 
       - name: Analytics + health smoke (no DB — verifies HTTP contract and taxonomy)

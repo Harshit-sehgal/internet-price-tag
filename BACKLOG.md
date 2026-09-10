@@ -16,7 +16,7 @@ Status: `code` = work to do in this repo · `owner` = needs accounts/credentials
 | A4 | Create **Upstash Redis** DB + set `UPSTASH_REDIS_REST_URL/TOKEN` in Vercel Preview + Production (separate DBs ideally) | owner | owner | `DEPLOY.md §3` |
 | A5 | **Dodo permission check** for symbolic-status product (confirm not restricted) → get **test** credentials + create PWYW one-time product → copy `DODO_PAYMENTS_PRODUCT_ID` | owner | owner (+ legal if unclear) | `DEPLOY.md §2` · spec §21 |
 | A6 | Add Dodo webhook `https://<domain>/api/webhooks/payments` (test endpoint) → copy `DODO_PAYMENTS_WEBHOOK_KEY` | owner | owner | Subscribe to `payment.succeeded/failed/cancelled` |
-| A7 | **Vercel** import + env separation (Production vs Preview) + custom domain | owner | owner | `DEPLOY.md §3` — never share prod DB/webhook with previews |
+| A7 | **Vercel**: rename project `internet-price-tag` → `priced` (runbook in DEPLOY.md §3), env separation (Production vs Preview), custom domain | owner | owner | `DEPLOY.md §3` — never share prod DB/webhook with previews. Env matrix documented in `.env.example` |
 | A8 | Set `SENTRY_DSN` + **Vercel Log Drains** + `/api/health` uptime check; alert on `refund_failed`, `takeover_finalization_error`, `webhook_*_failed`, `webhook_signature_invalid` spikes | owner | owner | `DEPLOY.md §8` |
 | A9 | Turnstile widget (optional) + Dodo fraud/risk features in dashboard | owner | owner | `DEPLOY.md §3` |
 
@@ -25,7 +25,7 @@ Status: `code` = work to do in this repo · `owner` = needs accounts/credentials
 | # | Task | Type | Depends | How |
 |---|------|------|---------|-----|
 | B1 | **Dodo sandbox matrix** (§76 gate) — success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage on a preview deploy with test keys | verify | A5–A7 | `DEPLOY.md §4` — record results, no unexplained states |
-| B2 | **Real Postgres concurrency** — run `tests/integration/postgres.finalize.test.ts` against preview Supabase | verify | A1 | `RUN_POSTGRES_TESTS=1 NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run test:postgres` (7 skipped in CI, 8 pass in staging) |
+| B2 | **Real Postgres concurrency** — run `tests/integration/postgres.finalize.test.ts` against preview Supabase | verify | A1 | `RUN_POSTGRES_TESTS=1 NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run test:postgres` (also covers `holder_analytics` RPC + `credit_ledger` migration; dockerized equivalent: `npm run test:pg` = 10 cases, CI-green) |
 | B3 | **Staging smoke** — health, analytics taxonomy, CSRF guards, auth redirect, routing | verify | A7 | `STAGING_URL=https://<preview>.vercel.app npm run smoke:staging` (`scripts/staging-smoke.mjs`) |
 | B4 | **Realtime** + browser loop on staging — search → domain → quote → checkout → webhook → sale → receipt → profile → market update → share | verify | A1–A7 | `tests/browser/loop.spec.ts` against `STAGING_URL` + manual check |
 | B5 | **Rate-limit across instances** — prove 429s from Upstash (burst quote/checkout/handle) on preview with Redis | verify | A4 | Hit `POST /api/quotes` / `POST /api/checkout` 30× fast; expect 429s, no 500s. `tests/load/race.mjs` already accounts for 429s. |
@@ -42,6 +42,10 @@ Status: `code` = work to do in this repo · `owner` = needs accounts/credentials
 | C6 | Real-Postgres test harness (skips in CI) | code | `tests/integration/postgres.finalize.test.ts` | ✅ |
 | C7 | Staging smoke script + `smoke:staging` / `test:postgres` scripts | code | `scripts/staging-smoke.mjs`, `package.json` | ✅ |
 | C8 | Branch protection doc + required CI gate | code | `.github/BRANCH_PROTECTION.md`, `.github/workflows/ci.yml` | ✅ |
+| C9 | Holder analytics SQL aggregation (`holder_analytics` RPC + support indexes) replacing bounded Node-side counting | code | `src/lib/holder-analytics.ts`, `supabase/migrations/20260910000003_*` | ✅ |
+| C10 | Analytics session ids: per-tab sessionStorage id in `track()` (privacy-safe; feeds unique-session metrics) | code | `src/lib/analytics.ts` | ✅ |
+| C11 | Open-redirect hardening on `/welcome` next param + CTA protocol regression tests | code | `src/app/welcome/page.tsx`, `tests/integration/cta.test.ts` | ✅ |
+| C12 | Repository cleanup: PR #1 closed as superseded, stale branches removed, old repo refs updated | code/admin | `.github/BRANCH_PROTECTION.md`, docs | ✅ |
 
 Remaining optional code follow-ups (pick up if time, not blocking launch):
 - Add `STAGING_URL` preview smoke as a required GitHub check (needs Vercel preview URL plumbing).

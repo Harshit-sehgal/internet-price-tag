@@ -6,7 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 function WelcomeInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/";
+  const rawNext = params.get("next") || "/";
+  // Same-origin only: a next of "https://evil" must never leave Priced.
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
   const [handle, setHandle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,7 +28,9 @@ function WelcomeInner() {
       setError(body.reason === "HANDLE_TAKEN" ? "That handle is taken." : body.error ?? "Could not save handle.");
       return;
     }
-    router.push(body.next ?? next);
+    // body.next is server-sanitized; next is sanitized above.
+    const target = typeof body.next === "string" && body.next.startsWith("/") && !body.next.startsWith("//") ? body.next : next;
+    router.push(target);
   }
 
   return (

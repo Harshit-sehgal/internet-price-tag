@@ -60,6 +60,7 @@ async function runMigrations(client) {
     "20260909000001_analytics_events.sql",
     "20260910000001_priced_profiles.sql",
     "20260910000002_credit_ledger.sql",
+    "20260910000003_holder_analytics_rpc.sql",
   ]) {
     const sql = await readFile(new URL(`../../supabase/migrations/${file}`, import.meta.url), "utf8");
     await client.query(sql);
@@ -276,4 +277,44 @@ test("IDEMPOTENCY_CONFLICT: same payment id with different args raises", { skip:
   // different payment id → normal second-claim path at the new price.
   assert.ok(!out.ok);
   assert.equal(out.code, "STALE_QUOTE");
+});
+
+test("holder_analytics RPC aggregates real counts SQL-side", { skip: !hasDocker }, async () => {
+  const userId = await seedProfile("rpc-analytics");
+  await finalize({
+    domain: "rpc-analytics.com", buyerUserId: userId, buyerHandle: "rpc-analytics",
+    expectedVersion: 0, paidCents: 500, providerPaymentId: "pi-rpc-analytics-0",
+  });
+
+  // Seed analytics rows directly (service-role-equivalent access).
+  await client.query(`
+    insert into public.analytics_events (event, handle, domain, session_id, created_at) values
+    ('tag_viewed', 'rpc-analytics', 'rpc-analytics.com', 's1', now()),
+    ('tag_viewed', 'rpc-analytics', 'rpc-analytics.com', 's1', now()),
+    ('tag_viewed', 'rpc-analytics', 'rpc-analytics.com', 's2', now()),
+    ('tag_viewed', 'rpc-analytics', 'other.com', 's3', now()),
+    ('tag_viewed', 'rpc-analytics', 'other.com', null, now()),
+    ('profile_viewed', 'rpc-analytics', null, 's1', now()),
+    ('share_visit', 'rpc-analytics', null, null, now()),
+    ('cta_clicked', 'rpc-analytics', null, 's4', now()),
+    ('tag_viewed', 'someone-else', 'rpc-analytics.com', 's5', now()),
+    ('tag_viewed', 'rpc-analytics', 'rpc-analytics.com', 's1', now() - interval '40 days')
+  `);
+
+  const res = await client.query("select public.holder_analytics($1, $2) as out", [
+    "rpc-analytics", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+  ]);
+  const a = res.rows[0].out;
+  assert.equal(a.tag_views, 5); // 3 own-domain + 2 other.com, excluding 40-day-old and someone-else
+  assert.equal(a.tag_view_sessions, 3); // s1, s2, s3
+  assert.equal(a.profile_views, 1);
+  assert.equal(a.share_visits, 1);
+  assert.equal(a.cta_clicks, 1);
+  const byDomain = Object.fromEntries(a.by_domain.map((r) => [r.domain, r]));
+  assert.equal(byDomain["rpc-analytics.com"].tag_views, 3);
+  assert.equal(byDomain["rpc-analytics.com"].unique_sessions, 2);
+  assert.equal(byDomain["other.com"].tag_views, 2);
+  assert.equal(byDomain["other.com"].unique_sessions, 1);
+  assert.ok(Array.isArray(a.daily) && a.daily.length >= 1);
+  assert.ok(a.daily.every((d) => typeof d.day === "string" && typeof d.views === "number"));
 });

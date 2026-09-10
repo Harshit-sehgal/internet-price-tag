@@ -16,6 +16,7 @@ export default function robots(): MetadataRoute.Robots {
           "/welcome",
           "/login",
           "/auth/",
+          "/*/analytics", // holder analytics are private surfaces
         ],
       },
     ],
