@@ -28,7 +28,7 @@ This file is the current authority for the next execution phase and overrides ol
 - Supabase Site URL is `https://internet-price-tag.vercel.app` and the `/auth/callback` redirect is configured. Google Auth Platform branding and a Web OAuth client are configured for `Priced`; Supabase Google sign-in is enabled, and a real browser login returned through the callback to Priced's welcome/handle setup page.
 - Dodo Test Mode contains the approved `Priced Takeover` Pay What You Want product with a $5 minimum and a signed webhook endpoint at `https://internet-price-tag.vercel.app/api/webhooks/payments`. No live mode or real-money configuration has been enabled.
 - Production liveness and Supabase readiness checks pass: `/api/health` returns `ok: true`, and `/api/health?check=db` returns `datastore: supabase` and `db: ok`.
-- Upstash wiring is not configured because the account's only free database is an existing `promptpay-staging-redis` database and the dashboard blocks another free database. That database was left untouched.
+- A new free-tier Upstash account was checked and its designated `priced-beta-redis` database was created in N. California (`us-west-1`). The existing `promptpay-staging-redis` database in the other account was left untouched. Vercel wiring is pending the owner's just-in-time confirmation before transmitting the REST URL and write token.
 - Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
 
 ## Do not redo
@@ -68,8 +68,8 @@ Do not create paid infrastructure without explicit owner approval.
 
 ### Track C: Upstash and operational checks
 
-1. Create one free Upstash Redis database for the designated beta environment. **External provider blocked** by the account's existing free-tier database quota.
-2. Configure the REST URL/token only in that environment.
+1. Create one free Upstash Redis database for the designated beta environment. **Implemented** (`priced-beta-redis`, Free Tier, `us-west-1`).
+2. Configure the REST URL/token only in that environment. **Owner blocked** pending explicit confirmation immediately before transmitting the credentials to Vercel Production.
 3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances.
 4. Use free logs and free uptime checks initially.
 5. Check `/api/health` and `/api/health?check=db`.
