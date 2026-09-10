@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getViewer } from "@/lib/auth";
+import { SignOutButton } from "@/components/SignOutButton";
 
 export async function SiteHeader() {
   let handle: string | null = null;
@@ -20,7 +21,10 @@ export async function SiteHeader() {
         </div>
         <nav style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
           {handle ? (
-            <span className="mono small">@{handle}</span>
+            <>
+              <span className="mono small">@{handle}</span>
+              <SignOutButton />
+            </>
           ) : (
             <Link href="/login" className="btn btn-sm">
               Log in
