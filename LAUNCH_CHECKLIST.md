@@ -29,7 +29,7 @@ Nothing is marked beyond the level actually evidenced.
 | Item | Status | Evidence |
 |---|---|---|
 | Integer-cent pricing, locked formula ($5 start, max($5, 1%)) | CI verified | `src/lib/game.test.ts` |
-| Version-checked, row-locked atomic `finalize_takeover` RPC | CI verified (dockerized Postgres); Staging pending | `tests/pg/finalize-rpc.test.ts`: 25-racer races → exactly one winner, losers STALE_QUOTE; real Supabase run pending (Owner blocked A1) |
+| Version-checked, row-locked atomic `finalize_takeover` RPC | CI verified (dockerized Postgres); Owner blocked for hosted verification | `tests/pg/finalize-rpc.test.ts`: 25-racer races → exactly one winner, losers STALE_QUOTE; real Supabase run requires authenticated database access |
 | Immutable sales history (append-only) | CI verified | RPC inserts only; `db/ops.sql` documents correction procedure |
 | In-memory mirror correctness (demo) | CI verified | `tests/integration/concurrency.test.ts` |
 | Idempotent webhook handling (event + payment id), stale-quote refunds | CI verified | `tests/integration/webhook-safety.test.ts`, `dodo.test.ts` |
@@ -40,16 +40,16 @@ Nothing is marked beyond the level actually evidenced.
 |---|---|---|
 | Dodo provider: PWYW checkout, Standard-Webhooks verify, refunds | Implemented; CI-verified logic | `tests/integration/dodo.test.ts` (network stubbed) |
 | Dodo permission check for symbolic-status product | Implemented | Owner confirmed Dodo product verification/approval; do not reopen unless Dodo requests it |
-| Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Owner blocked | Test product, API key, and signed webhook are configured in Vercel Production; real transaction matrix remains pending authenticated beta login and hosted execution. Procedure: `DEPLOY.md` §4. |
+| Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Staging verified (partial); Owner blocked for remaining cases | Real Test Mode success, declined payment, signed webhook acceptance, quote consumption, and atomic finalization are verified on the stable beta origin. Duplicate/cancelled/stale/refund/race/error cases still require the full hosted exercise. Procedure: `DEPLOY.md` §4. |
 | Live Dodo configuration | Owner blocked | DEPLOY.md §6 |
 
 ## Infrastructure
 
 | Item | Status | Evidence |
 |---|---|---|
-| Supabase project + migrations + auth + Realtime + backups | Implemented | Existing Priced project and hosted-hardening migrations are the source of truth; Site URL and `/auth/callback` are configured, `/api/health?check=db` is production-healthy, and a real Google login reached the Priced welcome flow. Permanent handle selection, Realtime verification, and the pre-money logical backup test remain pending. See `INTEGRATION_NOW.md`. |
-| Real-Postgres RPC concurrency (10 + 25 racers) | Locally verified (docker postgres:16); staging pending | `npm run test:pg` — 10/10 pass incl. `holder_analytics` RPC aggregation test |
-| Upstash Redis + distributed rate limits | Implemented; staging partially verified | Free-tier database `priced-beta-redis` is created in the new Upstash account (`us-west-1`); REST URL/token are configured only in Vercel Production and the Redis-enabled deployment is Ready. Authenticated `/api/handle` burst returned `429 rate_limited` without 5xx; quote/checkout/profile and cross-instance matrix remain pending permanent handle setup. Existing `promptpay-staging-redis` was left untouched. |
+| Supabase project + migrations + auth + Realtime + backups | Staging verified (auth/health); Owner blocked for backup verification | Existing Priced project and hosted-hardening migrations are the source of truth; Site URL and `/auth/callback` are configured, Google login reaches the welcome flow, `@harshit` is saved, and `/api/health?check=db` is healthy. A pre-money logical backup test remains blocked by authenticated database access; live Realtime event verification remains outstanding. See `INTEGRATION_NOW.md`. |
+| Real-Postgres RPC concurrency (10 + 25 racers) | CI verified; Owner blocked for hosted verification | `npm run test:pg` passes locally/CI; the hosted run requires authenticated database access and the 10/25 hosted challenger race remains outstanding |
+| Upstash Redis + distributed rate limits | Staging verified (partial) | Free-tier database `priced-beta-redis` is created in the new Upstash account (`us-west-1`); REST URL/token are configured only in Vercel Production and the Redis-enabled deployment is Ready. Authenticated `/api/handle` burst returned `429 rate_limited` without 5xx, and direct Redis PING/EVAL checks pass; quote/checkout/user/IP/domain matrix remains outstanding. Existing `promptpay-staging-redis` was left untouched. |
 | Vercel project rename `internet-price-tag` → `priced` | Implemented | Existing project renamed through the authenticated Vercel CLI; project id preserved and production alias remains `https://internet-price-tag.vercel.app` |
 | Env separation (Local/Preview/Production) | Implemented | Matrix in `.env.example`; Supabase and Dodo Test Mode credentials are configured only in Vercel Production, while ordinary previews remain secret-free/demo-only. |
 | Monitoring/alerts (error-event list, uptime, 5xx rate) | Implemented (docs + structured logs); wiring owner blocked | DEPLOY.md §8: exact log-drain queries + uptime endpoints; A8 wires destinations |
@@ -61,7 +61,7 @@ Nothing is marked beyond the level actually evidenced.
 |---|---|---|
 | Profiles: bio, CTA, held/previously-held, takeover history, stats | CI verified | `tests/integration/profile.test.ts`, `tests/browser/profile.spec.ts` |
 | CTA safety (https-only, protocol rejection, noopener noreferrer nofollow, non-ownership framing) | CI verified | `tests/integration/cta.test.ts` incl. dangerous-protocol regression; WHATWG normalization safe (stores canonical URL) |
-| Holder analytics `/u/[handle]/analytics` (owner-only) | CI verified (route + permission boundary); staging pending (needs real events) | SQL aggregation via `holder_analytics` RPC, PG-tested; honest empty states |
+| Holder analytics `/u/[handle]/analytics` (owner-only) | Staging verified | Hosted analytics show real tag views, profile views, and share visits through the `holder_analytics` RPC; owner-only route and empty states remain CI-tested |
 | Per-tab session ids for unique-visitor counts | Implemented; Locally verified | `src/lib/analytics.ts` sessionStorage id now sent by `track()`; PG-tested distinct-session counting in `holder_analytics` RPC |
 
 ## Safety & security
@@ -97,11 +97,11 @@ Nothing is marked beyond the level actually evidenced.
 
 ## Owner gates remaining (in order — exact actions in DEPLOY.md)
 
-1. **Supabase/Auth** (§1): choose the permanent public handle, then verify handle creation, logout, repeat login, and Realtime; Google policy, OAuth client, provider, login, callback, and welcome are complete.
-2. **Upstash** (§3/A4): verify distributed quote, checkout, handle, user, IP, and domain rate limits against the Redis-enabled Production deployment. Credential wiring is complete; hosted exercise is pending authenticated handle setup.
-3. **Sandbox gate** (§4/B1): after auth and Redis are available, run the full Dodo matrix, `npm run test:postgres` against real Supabase, and `npm run smoke:staging` against the stable beta deployment.
+1. **Supabase/Auth** (§1): verify a live Realtime market update across two sessions and complete the pre-money logical backup test; Google OAuth, callback, welcome, logout/re-login, and `@harshit` handle creation are complete.
+2. **Upstash** (§3/A4): verify distributed quote, checkout, handle, user, IP, and domain rate limits against the Redis-enabled Production deployment. Credential wiring and the handle burst are complete; the full hosted matrix remains.
+3. **Sandbox gate** (§4/B1): complete the remaining Dodo Test Mode matrix, run `npm run test:postgres` against real Supabase, run the hosted 10/25 challenger races, and retain the passing `npm run smoke:staging` result.
 4. **Monitoring** (§8/A8): wire Log Drain alerts per the query patterns, uptime checks on `/api/health(+?check=db)`, and optional `SENTRY_DSN`.
-5. **Backup test**: create and test the documented logical backup procedure before accepting real customer money; do not enable PITR during the free beta phase.
+5. **Backup test**: create and test the documented logical backup procedure before accepting real customer money; this is currently Owner blocked by authenticated database access. Do not enable PITR during the free beta phase.
 6. **Legal review** of policy pages (D1).
 7. **Live keys** (D2): swap to live Dodo config in Production only after every sandbox gate is green and plan compliance is reviewed.
 8. **Closed beta** (D3): 10–20 people; watch `takeover_succeeded`, `refund_failed`, and share visits; measure repeat-challenge rate (§35 metrics list).
