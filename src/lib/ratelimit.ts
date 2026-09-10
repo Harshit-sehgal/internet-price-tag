@@ -53,12 +53,12 @@ async function redisCheck(key: string, limit: number, windowMs: number): Promise
   if (!cfg) return memoryCheck(key, limit, windowMs);
   const namespaced = `ipt:rl:${key}`;
   try {
-    const res = await fetch(`${cfg.url}/eval`, {
+    const res = await fetch(cfg.url, {
       method: "POST",
       headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
-      // The `/eval` REST route already selects the Redis EVAL command. Its
-      // request body starts with the Lua script, not another `EVAL` token.
-      body: JSON.stringify([WINDOW_LUA, "1", namespaced, String(windowMs)]),
+      // Upstash's root REST endpoint accepts the complete Redis command as a
+      // JSON array. The command name must therefore be included here.
+      body: JSON.stringify(["EVAL", WINDOW_LUA, "1", namespaced, String(windowMs)]),
       signal: AbortSignal.timeout(1500),
     });
     if (!res.ok) return false; // fail closed
