@@ -53,7 +53,7 @@ because they need accounts, credentials and a legal review.
 3. Set environment variables for **Production** and separately for
    **Preview** (§58 — never share production DB/webhooks with previews):
    ```
-   NEXT_PUBLIC_APP_URL=https://<your-domain>
+   NEXT_PUBLIC_APP_URL=https://internet-price-tag.vercel.app # current beta origin
    NEXT_PUBLIC_SUPABASE_URL=...
    NEXT_PUBLIC_SUPABASE_ANON_KEY=...
    SUPABASE_SERVICE_ROLE_KEY=...        # Server secret — separate values for Production/Preview
@@ -61,12 +61,15 @@ because they need accounts, credentials and a legal review.
    DODO_PAYMENTS_MODE=test|live
    DODO_PAYMENTS_PRODUCT_ID=...         # One-time PWYW product id
    DODO_PAYMENTS_WEBHOOK_KEY=...        # Matching webhook secret per env
-   UPSTASH_REDIS_REST_URL=...           # Shared rate limiter (separate DBs per env ideally)
+   UPSTASH_REDIS_REST_URL=...           # One free DB for the designated beta environment
    UPSTASH_REDIS_REST_TOKEN=...
    NEXT_PUBLIC_TURNSTILE_SITE_KEY=...   # Optional, production bot protection
    TURNSTILE_SECRET_KEY=...
    DEMO_WEBHOOK_SECRET=...              # Demo only — unset/ignored when any provider or service-role key is set
    ```
+   Keep ordinary untrusted PR previews free of Supabase service-role, Dodo,
+   and Redis credentials. A separate Redis database can be introduced later
+   when environment isolation is revisited for real-money production.
 4. Deploy `main`. The preview environment runs in demo mode by default.
 
 ## 4. Sandbox payment gate (§76)
