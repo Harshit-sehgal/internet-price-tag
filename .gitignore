@@ -8,6 +8,7 @@ out/
 .DS_Store
 *.log
 .freebuff/
+.owner-reference.local.md
 tsconfig.tsbuildinfo
 *.tsbuildinfo
 test-results/

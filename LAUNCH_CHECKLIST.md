@@ -49,7 +49,7 @@ Nothing is marked beyond the level actually evidenced.
 |---|---|---|
 | Supabase project + migrations + auth + Realtime + backups | Implemented | Existing Priced project and hosted-hardening migrations are the source of truth; Site URL and `/auth/callback` are configured, `/api/health?check=db` is production-healthy, and a real Google login reached the Priced welcome flow. Permanent handle selection, Realtime verification, and the pre-money logical backup test remain pending. See `INTEGRATION_NOW.md`. |
 | Real-Postgres RPC concurrency (10 + 25 racers) | Locally verified (docker postgres:16); staging pending | `npm run test:pg` — 10/10 pass incl. `holder_analytics` RPC aggregation test |
-| Upstash Redis + distributed rate limits | External provider blocked | `tests/integration/ratelimit.test.ts`; fail-closed verified. The authenticated Upstash account already has its only free database allocated to `promptpay-staging-redis`; it was left untouched. |
+| Upstash Redis + distributed rate limits | Owner blocked | Free-tier database `priced-beta-redis` is created in the new Upstash account (`us-west-1`); REST URL/token still need to be transmitted to Vercel Production, then deployed and exercised. Existing `promptpay-staging-redis` was left untouched. |
 | Vercel project rename `internet-price-tag` → `priced` | Implemented | Existing project renamed through the authenticated Vercel CLI; project id preserved and production alias remains `https://internet-price-tag.vercel.app` |
 | Env separation (Local/Preview/Production) | Implemented | Matrix in `.env.example`; Supabase and Dodo Test Mode credentials are configured only in Vercel Production, while ordinary previews remain secret-free/demo-only. |
 | Monitoring/alerts (error-event list, uptime, 5xx rate) | Implemented (docs + structured logs); wiring owner blocked | DEPLOY.md §8: exact log-drain queries + uptime endpoints; A8 wires destinations |
@@ -98,7 +98,7 @@ Nothing is marked beyond the level actually evidenced.
 ## Owner gates remaining (in order — exact actions in DEPLOY.md)
 
 1. **Supabase/Auth** (§1): choose the permanent public handle, then verify handle creation, logout, repeat login, and Realtime; Google policy, OAuth client, provider, login, callback, and welcome are complete.
-2. **Upstash** (§3/A4): obtain a separate free-tier database or authorize use of a paid/additional database; set `UPSTASH_REDIS_REST_URL/TOKEN` only in the designated beta environment. Current status: External provider blocked by the existing free-tier quota.
+2. **Upstash** (§3/A4): set `UPSTASH_REDIS_REST_URL/TOKEN` only in the designated beta environment using the newly created `priced-beta-redis` database, then verify distributed rate limits. Current status: Owner blocked only for just-in-time confirmation before credential transmission.
 3. **Sandbox gate** (§4/B1): after auth and Redis are available, run the full Dodo matrix, `npm run test:postgres` against real Supabase, and `npm run smoke:staging` against the stable beta deployment.
 4. **Monitoring** (§8/A8): wire Log Drain alerts per the query patterns, uptime checks on `/api/health(+?check=db)`, and optional `SENTRY_DSN`.
 5. **Backup test**: create and test the documented logical backup procedure before accepting real customer money; do not enable PITR during the free beta phase.

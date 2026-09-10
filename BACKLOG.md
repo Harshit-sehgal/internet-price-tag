@@ -13,7 +13,7 @@ Status: `code` = work to do in this repo · `owner` = needs accounts/credentials
 | A1 | Verify the existing **Supabase** project + hosted hardening state; apply only missing migrations if any | owner | repo owner | `INTEGRATION_NOW.md` · `DEPLOY.md §1` |
 | A2 | Enable **Supabase Auth** providers (Google OAuth + email magic link) + set Site URL + redirect URLs | owner | owner | Needs Google Cloud OAuth client |
 | A3 | Enable **Supabase Realtime** + **backups/PITR** (7-day window) | owner | owner | `DEPLOY.md §7` |
-| A4 | Create one free **Upstash Redis** DB for the designated beta environment and set `UPSTASH_REDIS_REST_URL/TOKEN` there | owner | owner | `DEPLOY.md §3`; ordinary untrusted previews stay secret-free |
+| A4 | Create one free **Upstash Redis** DB for the designated beta environment and set `UPSTASH_REDIS_REST_URL/TOKEN` there | owner | owner | Database `priced-beta-redis` is created in the new Upstash account; transmit credentials only to Vercel Production after just-in-time confirmation. `DEPLOY.md §3`; ordinary untrusted previews stay secret-free |
 | A5 | Get **test** credentials + create/reuse approved PWYW one-time product → copy `DODO_PAYMENTS_PRODUCT_ID` | owner | owner | `DEPLOY.md §2` · `DODO_COMPLIANCE_GATE.md` |
 | A6 | Add Dodo webhook `https://<domain>/api/webhooks/payments` (test endpoint) → copy `DODO_PAYMENTS_WEBHOOK_KEY` | owner | owner | Subscribe to `payment.succeeded/failed/cancelled` |
 | A7 | **Vercel**: project rename is complete; configure designated beta env separation (Production vs Preview) | owner | owner | `DEPLOY.md §3` — no custom domain required for sandbox; never share privileged beta secrets with previews |
