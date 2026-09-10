@@ -8,6 +8,8 @@ Priced is a competitive internet game where people pay to become the current **s
 
 Nobody receives the real domain, website, company, trademark, IP, equity, DNS control, or legal ownership. A purchase changes only the public price tag and holder shown inside Priced.
 
+> **Agents:** read [AGENTS.md](./AGENTS.md) first, then [INTEGRATION_NOW.md](./INTEGRATION_NOW.md). Those files contain the current infrastructure state, Dodo approval status, Supabase details, free-tier strategy, execution order, security constraints, and hosted verification requirements. They override stale launch wording elsewhere.
+
 ## Core loop
 
 1. Search any valid domain.
@@ -49,11 +51,11 @@ integration, dockerized real-Postgres RPC races, browser (desktop + mobile +
 **Not active:** Priced Credits (spec + ledger exist, flag off, see
 [docs/CREDITS.md](./docs/CREDITS.md)).
 
-**Not yet done before real-money launch:** create the Supabase project and
-apply migrations, add Dodo sandbox credentials then live keys + webhook
-secret + PWYW product, configure Upstash, deploy to Vercel with split
-Preview/Production envs, run the sandbox payment matrix, get legal review of
-the policy pages, then wire alerts. LAUNCH_CHECKLIST.md tracks every gate.
+**Current hosted state:** the Priced Supabase project already exists in `ap-south-1`, canonical migrations and hosted hardening are applied, required Realtime tables are enabled, and privileged RPCs are service-role only. Dodo Payments product verification/approval is confirmed by the owner. The repository is still connected to the existing Vercel project under its old `internet-price-tag` project name.
+
+**Remaining integration work before closed beta:** configure the existing Vercel project and stable beta URL, wire Supabase Auth with Google OAuth, configure Dodo Test Mode credentials/product/signed webhook, create free Upstash Redis, and run the complete hosted integration/payment/concurrency/Realtime/analytics test matrix. See [AGENTS.md](./AGENTS.md) and [INTEGRATION_NOW.md](./INTEGRATION_NOW.md).
+
+**Before real-money public launch:** review production hosting plan compliance, disaster recovery/logical backups, legal/support readiness, environment isolation, live Dodo credentials, and the closed-beta results.
 
 The reusable foundation is:
 
@@ -71,6 +73,8 @@ Read **[PROJECT_BLUEPRINT.md](./PROJECT_BLUEPRINT.md)** before changing the prod
 
 Also see:
 
+- [AGENTS.md](./AGENTS.md) · current source of truth for coding/infrastructure agents
+- [INTEGRATION_NOW.md](./INTEGRATION_NOW.md) · immediate integration execution plan
 - [MARKET_RULES.md](./MARKET_RULES.md) · exact market mechanics
 - [supabase/migrations/](./supabase/migrations/) · versioned migrations (canonical history) + [db/schema.sql](./db/schema.sql) + [db/schema-extended.sql](./db/schema-extended.sql) · portable single-apply equivalents, RLS, atomic takeover RPC
 - [db/ops.sql](./db/ops.sql) · operator moderation tooling
@@ -92,15 +96,15 @@ Also see:
 
 ```bash
 npm install
-npm run test        # market rules + concurrency suite
+npm run test
 npm run typecheck
 npm run lint
 npm run build
 npx playwright install chromium
-npm run test:browser # §54 browser suite (desktop + mobile, demo mode)
+npm run test:browser
 ```
 
-The app runs with no credentials in demo mode (in-memory market + simulated payments). For production, copy `.env.example`, configure Supabase (auth + Postgres) and a Dodo Payments account (create a Pay-What-You-Want one-time product for dynamic takeover pricing), and apply either `supabase/migrations/*` via `npx supabase db push` or `db/schema.sql` then `db/schema-extended.sql` — both paths are kept in sync.
+The app runs with no credentials in demo mode using an in-memory market and simulated payments. For the current hosted beta strategy, follow `AGENTS.md` and `.env.example`; do not recreate Supabase or assume a second staging Supabase project is required.
 
 V1 eligibility is explicit: `ALLOWED_SUFFIXES` in `src/lib/domains.ts` is the launch allowlist; IDN/punycode (`xn--`) is rejected to avoid homograph/display risk (DEPLOY.md §9).
 
