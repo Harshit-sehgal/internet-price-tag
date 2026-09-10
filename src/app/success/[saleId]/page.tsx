@@ -4,6 +4,7 @@ import { money, quoteFor } from "@/lib/game.ts";
 import { getSale } from "@/lib/repo";
 import { ShareButtons } from "@/components/ShareButtons";
 import { LiveRefresh } from "@/components/LiveRefresh";
+import { persistAnalyticsEvent } from "@/lib/analytics-server";
 
 export const dynamic = "force-dynamic";
 
@@ -44,8 +45,12 @@ export default async function SuccessPage({ params, searchParams }: Params & { s
   if (data && searchParams) {
     const sp = await searchParams;
     if (sp.via === "share" || sp.via === "x") {
-      const { track } = await import("@/lib/analytics");
-      track("share_visit", { saleId, via: String(sp.via), domain: data.sale.domain, handle: data.sale.buyerHandle });
+      await persistAnalyticsEvent({
+        event: "share_visit",
+        domain: data.sale.domain,
+        handle: data.sale.buyerHandle,
+        props: { saleId, via: String(sp.via) },
+      });
     }
   }
 

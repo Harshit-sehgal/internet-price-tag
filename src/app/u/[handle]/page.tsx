@@ -3,7 +3,7 @@ import Link from "next/link";
 import { money } from "@/lib/game.ts";
 import { getProfileByHandle, listSalesForBuyer, listMarket } from "@/lib/repo";
 import { isHandleValid } from "@/lib/domains.ts";
-import { track } from "@/lib/analytics";
+import { persistAnalyticsEvent } from "@/lib/analytics-server";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { HolderCta, HolderCtaInline } from "@/components/HolderCta";
 import { ProfileEditor } from "@/components/ProfileEditor";
@@ -60,11 +60,7 @@ export default async function HolderPage({ params }: Params) {
     listMarket(1000),
   ]);
   // Holder analytics input: profile render counts a view (best-effort).
-  try {
-    track("profile_viewed", { handle: h });
-  } catch {
-    // analytics must never break the page
-  }
+  await persistAnalyticsEvent({ event: "profile_viewed", handle: h });
 
   const held = market.filter((row) => row.holderHandle === h);
   const heldDomains = new Set(held.map((t) => t.domain));
