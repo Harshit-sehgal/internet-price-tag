@@ -47,7 +47,7 @@ Nothing is marked beyond the level actually evidenced.
 
 | Item | Status | Evidence |
 |---|---|---|
-| Supabase project + migrations + auth + Realtime + backups | Implemented | Existing Priced project and hosted-hardening migrations are the source of truth; Site URL and `/auth/callback` are configured, and `/api/health?check=db` is production-healthy. Google OAuth acceptance, full auth flow, and pre-money logical backup test remain pending. See `INTEGRATION_NOW.md`. |
+| Supabase project + migrations + auth + Realtime + backups | Implemented | Existing Priced project and hosted-hardening migrations are the source of truth; Site URL and `/auth/callback` are configured, `/api/health?check=db` is production-healthy, and a real Google login reached the Priced welcome flow. Permanent handle selection, Realtime verification, and the pre-money logical backup test remain pending. See `INTEGRATION_NOW.md`. |
 | Real-Postgres RPC concurrency (10 + 25 racers) | Locally verified (docker postgres:16); staging pending | `npm run test:pg` — 10/10 pass incl. `holder_analytics` RPC aggregation test |
 | Upstash Redis + distributed rate limits | External provider blocked | `tests/integration/ratelimit.test.ts`; fail-closed verified. The authenticated Upstash account already has its only free database allocated to `promptpay-staging-redis`; it was left untouched. |
 | Vercel project rename `internet-price-tag` → `priced` | Implemented | Existing project renamed through the authenticated Vercel CLI; project id preserved and production alias remains `https://internet-price-tag.vercel.app` |
@@ -97,7 +97,7 @@ Nothing is marked beyond the level actually evidenced.
 
 ## Owner gates remaining (in order — exact actions in DEPLOY.md)
 
-1. **Supabase/Auth** (§1): accept Google’s User Data Policy, create the OAuth client, enable Google, then verify login, callback, welcome, handle creation, logout, repeat login, and Realtime.
+1. **Supabase/Auth** (§1): choose the permanent public handle, then verify handle creation, logout, repeat login, and Realtime; Google policy, OAuth client, provider, login, callback, and welcome are complete.
 2. **Upstash** (§3/A4): obtain a separate free-tier database or authorize use of a paid/additional database; set `UPSTASH_REDIS_REST_URL/TOKEN` only in the designated beta environment. Current status: External provider blocked by the existing free-tier quota.
 3. **Sandbox gate** (§4/B1): after auth and Redis are available, run the full Dodo matrix, `npm run test:postgres` against real Supabase, and `npm run smoke:staging` against the stable beta deployment.
 4. **Monitoring** (§8/A8): wire Log Drain alerts per the query patterns, uptime checks on `/api/health(+?check=db)`, and optional `SENTRY_DSN`.

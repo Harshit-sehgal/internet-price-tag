@@ -25,7 +25,7 @@ This file is the current authority for the next execution phase and overrides ol
 - The stable production alias is `https://internet-price-tag.vercel.app` and is connected to the renamed `priced` Vercel project.
 - Vercel Git deployment remains connected to `Harshit-sehgal/priced` with `main` as the production branch.
 - The stable Production environment has `NEXT_PUBLIC_APP_URL`, the three Supabase variables, and the four Dodo Test Mode variables configured. Ordinary Preview deployments remain demo-only and do not receive privileged credentials.
-- Supabase Site URL is `https://internet-price-tag.vercel.app` and the `/auth/callback` redirect is configured. Google OAuth is not enabled yet: Google Auth Platform setup is paused at the required User Data Policy acceptance step.
+- Supabase Site URL is `https://internet-price-tag.vercel.app` and the `/auth/callback` redirect is configured. Google Auth Platform branding and a Web OAuth client are configured for `Priced`; Supabase Google sign-in is enabled, and a real browser login returned through the callback to Priced's welcome/handle setup page.
 - Dodo Test Mode contains the approved `Priced Takeover` Pay What You Want product with a $5 minimum and a signed webhook endpoint at `https://internet-price-tag.vercel.app/api/webhooks/payments`. No live mode or real-money configuration has been enabled.
 - Production liveness and Supabase readiness checks pass: `/api/health` returns `ok: true`, and `/api/health?check=db` returns `datastore: supabase` and `db: ok`.
 - Upstash wiring is not configured because the account's only free database is an existing `promptpay-staging-redis` database and the dashboard blocks another free database. That database was left untouched.
@@ -51,8 +51,8 @@ Do not create paid infrastructure without explicit owner approval.
 4. Establish one stable beta/staging origin. **Implemented** with `https://internet-price-tag.vercel.app`.
 5. Wire the Priced Supabase public URL/key and server-only service-role key into that designated environment. **Implemented.**
 6. Configure Supabase Site URL and redirects using the stable origin. **Implemented.**
-7. Configure Google OAuth as the primary beta login. **Owner blocked** at Google’s required User Data Policy acceptance step.
-8. Verify login, OAuth callback, welcome, handle creation, logout, and repeat login. **Owner blocked** until Google OAuth is enabled.
+7. Configure Google OAuth as the primary beta login. **Implemented.**
+8. Verify login, OAuth callback, welcome, handle creation, logout, and repeat login. **Owner blocked** only at choosing the permanent public handle; Google login, callback, and welcome are verified.
 9. Keep ordinary untrusted PR previews in demo mode without service-role or Dodo credentials. **Implemented.**
 
 ### Track B: Dodo Payments
