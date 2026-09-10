@@ -1,14 +1,16 @@
-# The Internet Price Tag — Project Blueprint
+# Priced Project Blueprint
 
-> **Status:** product foundation / pre-redesign
+> **Status:** implemented core product, consolidating around Priced.
 >
-> **Design decision:** the previous UI is rejected. The frontend must be designed again from zero. Preserve the idea and market mechanics, not the old visual treatment.
+> Sections 1 to 20 describe the product contract (still authoritative). The old
+> phased build plan has been replaced by the Current State section at the
+> bottom: what exists, what is demo-only, what is verified, what remains.
 
 ---
 
 ## 1. Product in one sentence
 
-**The Internet Price Tag is a public competitive market/game where people pay to become the temporary symbolic holder of recognizable internet domains, and anyone can take that status by paying the next required price.**
+**Priced is a public competitive market/game where people pay to become the temporary symbolic holder of recognizable internet domains, and anyone can take that status by paying the next required price.**
 
 Examples include `google.com`, `openai.com`, `x.com`, `reddit.com`, `apple.com`, college domains, competitors, friends' sites, and users' own startups.
 
@@ -83,7 +85,12 @@ Examples:
 The current holder cannot take over their own tag.
 
 ### Former-holder economics
-Recommended V1: the displaced holder receives **$0**. No resale payout, royalty, credit, equity, or investment return. This keeps the mechanic simple and avoids turning the status into a pseudo-financial asset.
+Live rule: the displaced holder receives **$0**. No resale payout, royalty, equity, or investment return.
+
+`docs/CREDITS.md` specifies an INACTIVE decorative-credit concept (Priced
+Credits, flag off by default). It is a scoreboard counter, not money, and it
+is not active in any checkout, receipt, refund, or accounting path. Read the
+spec before ever enabling the flag.
 
 ---
 
@@ -284,7 +291,7 @@ Keep it extremely short. Show domain, current state, exact charge, what the user
 ### Success
 Turn the transaction into a shareable receipt:
 
-- “you now hold <domain>'s Internet Price Tag”;
+- “you now hold <domain>'s Priced”;
 - paid amount;
 - previous holder when useful;
 - current next price;
@@ -411,7 +418,7 @@ Sharing is a core feature, not polish.
 Default post format should be extremely simple and editable, e.g.:
 
 ```text
-I just took openai.com for $949.40 on The Internet Price Tag.
+I just took openai.com for $949.40 on Priced.
 
 (not the actual domain lol)
 ```
@@ -529,125 +536,83 @@ Measure search → quote, quote → checkout, checkout → paid takeover, takeov
 
 ---
 
-## 23. Build order
+## 23. Current state (truth, not plan)
 
-### Phase 0 — foundation — current
-- [x] product thesis
-- [x] locked pricing formula
-- [x] integer-cent math
-- [x] normalization prototype
-- [x] versioned market model
-- [x] stale-quote protection
-- [x] atomic Postgres takeover function
-- [x] immutable sale history model
-- [x] initial tests
-- [x] previous UI rejected
+### What exists and is tested in this repo
+- Market engine: integer-cent pricing, quotes (5-minute TTL), version-checked
+  atomic finalization via the `finalize_takeover` Postgres RPC (row-locked,
+  idempotent), mirrored by an in-memory store for demo/CI
+  (`src/lib/game.ts`, `src/lib/repo.ts`, `db/schema.sql`).
+- Payments: Dodo Payments provider (Standard Webhooks verification, PWYW
+  checkout sessions, refunds), Stripe adapter retained, demo provider for
+  local/preview (`src/lib/payments.ts`).
+- Webhook retry contract: event dedupe via unique violation only, 500 on
+  transient failure, deterministic stale-payment refunds, no refund on
+  IDEMPOTENCY_CONFLICT (`src/lib/takeover.ts`, `src/app/api/webhooks/payments`).
+- Auth: Supabase email (magic link + OAuth callbacks), immutable public
+  handles, banned-handle list (`src/lib/auth.ts`, `src/app/login`, `/welcome`).
+- Domain policy: normalization, TLD allowlist, static + DB reserved lists,
+  IDN/punycode rejection, IP/localhost rejection (`src/lib/domains.ts`).
+- Rate limiting: Upstash Redis fixed-window limiter, fail-closed, in-memory
+  fallback for demo/CI (`src/lib/ratelimit.ts`).
+- Profiles: public handle, optional display name/avatar/bio/CTA (https-only,
+  validated, safe rel attributes), current + previously held, takeover
+  history, derived stats (`/u/[handle]`, `src/app/api/profile`).
+- Holder CTA: appears on profile and on held tags' domain pages, click
+  tracking via `cta_clicked` (`src/components/HolderCta.tsx`).
+- History: immutable per-domain provenance ledger with previous holder, price
+  delta, first-claim marks, current-holder flag, totals
+  (`src/components/HistoryLedger.tsx`).
+- Holder analytics: real COUNT aggregation over `analytics_events` (tag
+  views, unique sessions, profile views, share visits, CTA clicks, per-domain,
+  per-day) at `/u/[handle]/analytics`, owner-only, honest empty states
+  (`src/lib/holder-analytics.ts`).
+- Discovery: Highest Priced (market table), Most Contested, Recent Takeovers,
+  Fastest Rising (challenger-driven rises only), Newly Claimed — all computed
+  from the real ledger, none fabricated (`src/app/page.tsx`).
+- Share: X intent, copy post, copy link, native share sheet where supported,
+  `?via=share` attribution (`src/components/ShareButtons.tsx`).
+- OG cards: branded Priced domain + receipt cards, dynamic
+  (`src/app/domain/[domain]/opengraph-image.tsx`, `src/app/success/...`).
+- Observability: structured JSON logs for payment events, payload hashes,
+  optional Sentry DSN hook (`src/lib/logger.ts`).
+- CI: lint, typecheck, unit, integration (payments, webhooks, rate limits,
+  profiles, CTA, discovery), dockerized real-Postgres RPC suite, browser
+  suite incl. responsive 375/430/tablet and brand checks, production build,
+  live-HTTP race test (`.github/workflows/ci.yml`).
 
-### Phase 1 — redesign + shared read-only market
-- [ ] create a new visual system from scratch
-- [ ] produce multiple distinct design explorations
-- [ ] select one direction only after comparing them
-- [ ] build homepage market
-- [ ] build domain page
-- [ ] connect Supabase read model
-- [ ] seed demo market data
-- [ ] domain search + validation
-- [ ] sales-history views
-- [ ] mobile polish
+### What only works in demo mode (no external services)
+- The in-memory market (no Supabase): seeded demo rows, demo buyer, mock
+  checkout at `/checkout/mock`, per-process random webhook secret.
+- Analytics persistence: `analytics_events` writes are no-ops without the
+  datastore, so holder analytics intentionally reports "no datastore" rather
+  than fake numbers.
+- Polling-based live refresh (Supabase Realtime needs the real project).
 
-### Phase 2 — auth + market transaction
-- [ ] authentication
-- [ ] public handles
-- [ ] server quote endpoint
-- [ ] quote expiration
-- [ ] DB finalization integration
-- [ ] realtime updates
-- [ ] concurrency/database tests
+### What requires owner credentials (cannot be done in-repo)
+- Supabase project + migrations + auth providers + Realtime + backups.
+- Upstash Redis database + envs (Preview and Production).
+- Dodo Payments permission check, sandbox + live keys, PWYW product, webhook
+  secret.
+- Cloudflare Turnstile site/secret keys.
+- Vercel deploy, env separation, canonical `priced` domain.
+- Legal review of policy pages and product classification.
 
-### Phase 3 — payments
-- [ ] select Stripe or Polar
-- [ ] checkout from server quote
-- [ ] signed webhook
-- [ ] idempotency
-- [ ] authorization/capture if supported
-- [ ] stale-payment refund/void path
-- [ ] receipts and failure states
+### What is production verified vs locally verified
+- Locally/CI verified: all tests above, including dockerized Postgres RPC
+  concurrency (25 racers, one winner) against real row locks.
+- NOT yet production verified: the real Supabase RPC under live traffic,
+  Dodo sandbox matrix, multi-instance rate limiting, Realtime against the
+  real project, OG cards in the X card validator, alerts wired to a
+  destination. LAUNCH_CHECKLIST.md tracks each.
 
-### Phase 4 — virality
-- [ ] dynamic OG images
-- [ ] X share action
-- [ ] copy link/post
-- [ ] recent takeover feed
-- [ ] inbound-share attribution
-
-### Phase 5 — launch hardening
-- [ ] rate limits
-- [ ] moderation/reserved domains
-- [ ] fraud controls
-- [ ] terms/privacy/refund pages
-- [ ] analytics
-- [ ] performance/load testing
-- [ ] observability/error alerts
-
-### Phase 6 — only after usage proves demand
-Consider profiles, watchlists, notifications, market categories, historical charts, advanced leaderboards, verified X identity, collections, or APIs only if real behavior justifies them.
-
----
-
-## 24. Do NOT add to V1
-
-Do not pre-build:
-
-- complex dashboards;
-- DMs/chat;
-- teams/workspaces;
-- subscriptions just because this is a web product;
-- crypto/blockchain/NFTs;
-- holder resale payouts;
-- portfolios with financial-return language;
-- sophisticated social graphs;
-- auctions with arbitrary user-entered bids;
-- AI features without a direct role in the market loop;
-- complicated badges/levels;
-- excessive notification systems;
-- admin UI beyond what launch safety actually requires.
-
-The core market should remain stupidly simple.
-
----
-
-## 25. Open decisions
-
-Decide deliberately before the relevant phase:
-
-1. Stripe vs Polar.
-2. Initial auth method.
-3. Whether X verification is required at launch.
-4. Domain eligibility: registered-only vs resolvable-only.
-5. Whether subdomains have separate tags.
-6. Government/education-domain policy.
-7. Refund policy beyond mandatory stale-checkout handling.
-8. Whether the $5 first-claim price stays fixed after launch experiments.
-9. Whether the repo remains public during development.
-
-These should not block the UI redesign unless they directly affect visible product copy.
-
----
-
-## 26. Definition of a successful MVP
-
-Two users on different devices must be able to:
-
-1. see the same domain state;
-2. receive the same server-authoritative next price;
-3. attempt a takeover with real concurrency safety;
-4. pay;
-5. end with exactly one valid current holder;
-6. see immutable history;
-7. share the result publicly;
-8. have another person arrive from that share and understand how to challenge them.
-
-If that loop works cleanly, the MVP is real. Everything else is secondary.
+### Incomplete or intentionally deferred
+- Priced Credits: spec + ledger migration exist, feature flag OFF, no user
+  surface (docs/CREDITS.md).
+- Unique-visitor counting uses session ids from the client beacon: reliable
+  only when sessions are set; the analytics page labels them as sessions,
+  never as people.
+- Trending: not implemented; needs a defensible definition before it exists.
 
 ---
 
@@ -670,13 +635,13 @@ If that loop works cleanly, the MVP is real. Everything else is secondary.
 
 ## 28. Current repo intent
 
-`src/lib/game.ts` is the deterministic prototype of normalization, price quotes, takeover validation, versions, and market-value calculation.
-
-`src/lib/game.test.ts` guards the locked mechanics.
-
-`db/schema.sql` is the first production-oriented atomic market schema. It still needs auth/RLS integration and database-level concurrency tests before launch.
-
-`src/app/page.tsx` is intentionally a placeholder. It is **not the desired design**.
+The product is consolidated around the Priced brand. The market mechanics in
+`src/lib/game.ts` and the SQL in `db/` are the canonical, locked
+implementation; the UI exists and is subject to targeted improvement, not
+another from-zero redesign. Repository internal names (db tables, env vars,
+CI) intentionally retain their historical identifiers: renaming them has no
+migration-safe benefit. If the GitHub repo is renamed to `priced`, update the
+CI badge URL in README.md and the clone URLs in DEPLOY.md.
 
 ---
 

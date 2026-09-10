@@ -58,6 +58,8 @@ async function runMigrations(client) {
     "20260908000001_market_core.sql",
     "20260908000002_identity_quotes_observability.sql",
     "20260909000001_analytics_events.sql",
+    "20260910000001_priced_profiles.sql",
+    "20260910000002_credit_ledger.sql",
   ]) {
     const sql = await readFile(new URL(`../../supabase/migrations/${file}`, import.meta.url), "utf8");
     await client.query(sql);

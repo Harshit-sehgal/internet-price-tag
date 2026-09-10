@@ -5,7 +5,11 @@ import { getDomain } from "@/lib/repo";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "Internet Price Tag";
+export const alt = "Priced";
+
+const appHost = process.env.NEXT_PUBLIC_APP_URL
+  ? new URL(process.env.NEXT_PUBLIC_APP_URL).host
+  : "priced.game";
 
 export default async function OgImage({ params }: { params: Promise<{ domain: string }> }) {
   const { domain } = await params;
@@ -30,8 +34,8 @@ export default async function OgImage({ params }: { params: Promise<{ domain: st
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 22, letterSpacing: 4, color: "#615d4e" }}>
-          <span>THE INTERNET PRICE TAG</span>
-          <span>SYMBOLIC — NOT THE DOMAIN</span>
+          <span style={{ color: "#16150f", fontWeight: 700 }}>PRICED</span>
+          <span>NOT THE ACTUAL DOMAIN</span>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -41,14 +45,14 @@ export default async function OgImage({ params }: { params: Promise<{ domain: st
               {unclaimed ? "$5" : money(row.priceCents)}
             </span>
             <span style={{ fontSize: 30, color: "#615d4e" }}>
-              {unclaimed ? "first claim — nobody holds this yet" : `held by @${row.holderHandle}`}
+              {unclaimed ? "unclaimed · first claim costs $5" : `held by @${row.holderHandle}`}
             </span>
           </div>
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 26, borderTop: "4px solid #16150f", paddingTop: 20 }}>
           <span>TAKE IT BEFORE SOMEONE ELSE DOES</span>
-          <span>internetpricetag.game</span>
+          <span>{appHost}</span>
         </div>
       </div>
     ),

@@ -149,6 +149,7 @@ export const BANNED_HANDLES = [
   "internetpricetag",
   "price_tag",
   "pricetag",
+  "priced",
   "ipt",
 ] as const;
 

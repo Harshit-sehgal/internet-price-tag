@@ -53,7 +53,7 @@ export async function getViewer(): Promise<{ user: SessionUser | null; profile: 
 /** Dev/demo identities when Supabase auth is not configured. */
 export function demoViewer(): { user: SessionUser; profile: RepoProfile } {
   const user = { id: "demo-user", email: "demo@localhost" };
-  const profile: RepoProfile = { id: user.id, handle: "demo", displayName: "Demo Holder", avatarUrl: null, suspendedAt: null };
+  const profile: RepoProfile = { id: user.id, handle: "demo", displayName: "Demo Holder", avatarUrl: null, bio: null, ctaLabel: null, ctaUrl: null, suspendedAt: null };
   return { user, profile };
 }
 

@@ -16,13 +16,17 @@ export type AnalyticsEvent =
   | "takeover_succeeded"
   | "share_clicked"
   | "share_copied"
-  | "share_visit";
+  | "share_visit"
+  | "profile_viewed"
+  | "profile_updated"
+  | "cta_clicked"
+  | "tag_viewed";
 
 const EVENTS: readonly AnalyticsEvent[] = [
   "homepage_viewed", "domain_searched", "domain_opened", "claim_clicked", "takeover_clicked",
   "login_started", "login_completed", "quote_created", "checkout_started", "checkout_blocked_bot", "payment_succeeded",
   "payment_failed", "payment_refunded", "takeover_succeeded", "share_clicked", "share_copied",
-  "share_visit",
+  "share_visit", "profile_viewed", "profile_updated", "cta_clicked", "tag_viewed",
 ];
 
 export function isAllowedAnalyticsEvent(event: string): event is AnalyticsEvent {

@@ -26,8 +26,8 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "login_required" }, { status: 401 });
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const rlUser = await rateLimit(`checkout:${user.id}`, 6, 60_000);
-  const rlIp = await rateLimit(`checkout:ip:${ip}`, 12, 60_000);
+  const rlUser = await rateLimit(`checkout:${user.id}`, 20, 60_000);
+  const rlIp = await rateLimit(`checkout:ip:${ip}`, 30, 60_000);
   if (!rlUser || !rlIp) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
 
   // Body size guard before JSON parse (abuse/DoS).

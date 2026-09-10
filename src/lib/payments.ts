@@ -146,7 +146,7 @@ class StripeProvider implements PaymentProvider {
             unit_amount: args.amountCents,
             product_data: {
               name: `Take ${args.domain}`,
-              description: "Temporary symbolic holder status on The Internet Price Tag. Not the actual domain.",
+              description: "Temporary symbolic holder status on Priced. Not the actual domain.",
             },
           },
         },

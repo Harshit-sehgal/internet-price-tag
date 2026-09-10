@@ -43,7 +43,7 @@ function WelcomeInner() {
           id="handle"
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
-          placeholder="lowercase, 3–20 chars, a-z 0-9 _"
+          placeholder="lowercase, 3 to 20 chars, a-z 0-9 _"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}

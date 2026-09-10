@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { money, quoteFor } from "@/lib/game.ts";
-import { getDomain, isDomainReserved, listSalesForDomain, type RepoDomain } from "@/lib/repo";
+import { getDomain, getProfileByHandle, isDomainReserved, listSalesForDomain, type RepoDomain } from "@/lib/repo";
 import { TakeoverCTA } from "@/components/TakeoverCTA";
 import { HistoryLedger } from "@/components/HistoryLedger";
 import { LiveRefresh } from "@/components/LiveRefresh";
+import { HolderCta } from "@/components/HolderCta";
 
 export const dynamic = "force-dynamic";
 
@@ -42,22 +43,22 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!canonical) return { title: "Unknown domain" };
   if (reason === "reserved") {
     return {
-      title: `${canonical} is reserved — not claimable`,
-      description: `${canonical} is reserved by the operator and cannot be claimed on The Internet Price Tag.`,
+      title: `${canonical} is reserved`,
+      description: `${canonical} is reserved by the operator and cannot be claimed on Priced.`,
       robots: { index: false, follow: true },
     };
   }
   if (!row || !row.holderUserId) {
     return {
-      title: `${canonical} is unclaimed — $5 first claim`,
-      description: `Nobody holds ${canonical}'s symbolic Internet Price Tag yet. First claim costs $5.`,
+      title: `${canonical} is unclaimed · $5 first claim`,
+      description: `Nobody holds ${canonical}'s tag on Priced yet. First claim costs $5.`,
       // Empty generated pages stay out of the index (§38).
       robots: { index: false, follow: true },
     };
   }
   return {
-    title: `${canonical} is ${money(row.priceCents)} — held by @${row.holderHandle}`,
-    description: `@${row.holderHandle} currently holds ${canonical}'s symbolic Internet Price Tag for ${money(row.priceCents)}. Not the actual domain.`,
+    title: `${canonical} is ${money(row.priceCents)} · held by @${row.holderHandle}`,
+    description: `@${row.holderHandle} currently holds the ${canonical} tag on Priced for ${money(row.priceCents)}. Not the actual domain.`,
   };
 }
 
@@ -77,6 +78,21 @@ export default async function DomainPage({ params }: Params) {
 
   const unclaimed = !row || !row.holderUserId;
   const reserved = reason === "reserved";
+  // Holder analytics input: a claimed, non-reserved tag render counts as a
+  // tag view (best-effort, never blocks render).
+  if (!unclaimed && !reserved) {
+    try {
+      const { track } = await import("@/lib/analytics");
+      track("tag_viewed", { domain: canonical, handle: row?.holderHandle ?? null });
+    } catch {
+      // analytics must never break the page
+    }
+  }
+  // Holder's public CTA (bio/CTA live on the profile; shown here so a
+  // holding actually generates exposure for its holder).
+  const holderProfile = !unclaimed && row?.holderHandle
+    ? await getProfileByHandle(row.holderHandle).catch(() => null)
+    : null;
   const quote = quoteFor({
     domain: canonical,
     holder: row?.holderHandle ?? null,
@@ -89,7 +105,7 @@ export default async function DomainPage({ params }: Params) {
     <div className="stack-lg">
       <LiveRefresh />
       <section className="stack">
-        <p className="eyebrow">Symbolic Internet Price Tag</p>
+        <p className="eyebrow">Priced tag</p>
         <h1 className="display display-domain">{canonical}</h1>
 
         {reserved ? (
@@ -135,6 +151,14 @@ export default async function DomainPage({ params }: Params) {
                   <span className="holder-dot" />
                   @{row?.holderHandle}
                 </Link>
+                {holderProfile?.ctaLabel && holderProfile?.ctaUrl ? (
+                  <div className="stack" style={{ gap: "var(--space-1)" }}>
+                    <HolderCta label={holderProfile.ctaLabel} url={holderProfile.ctaUrl} handle={holderProfile.handle} />
+                    <span className="small muted" style={{ fontSize: 11 }}>
+                      the holder&apos;s link, not {canonical}&apos;s
+                    </span>
+                  </div>
+                ) : null}
               </div>
               <div className="stack" style={{ gap: "var(--space-1)", textAlign: "right" }}>
                 <span className="eyebrow">Current price</span>

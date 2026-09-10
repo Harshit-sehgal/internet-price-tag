@@ -17,6 +17,36 @@ Status legend — demo-mode tests passing is NOT production-done:
 - 🟡 UI/device review at 375px/430px/tablet/desktop, long domains, large prices, all states (item 11 — not yet done on a real deployment)
 - 🟡 OG cards render in build; not yet validated in the X card validator (item 13)
 
+## Priced consolidation (V2)
+
+- ✅ Brand migration: Priced everywhere public (header, metadata, OG cards,
+  share copy, checkout descriptions, legal pages, docs); old name gone from
+  user-facing surfaces; `priced` added to the reserved-handle list
+- ✅ Holder profiles: bio, optional CTA, currently/previously held, derived
+  stats (largest tag, most contested), takeover history (`/u/[handle]`)
+- ✅ Holder CTA: https-only validation, safe external links (noopener
+  noreferrer nofollow), shown on profile + held tags' domain pages,
+  `cta_clicked` tracking (`/api/profile`, `src/lib/cta.ts`)
+- ✅ Permanent history: provenance ledger with previous holder, price delta,
+  first-claim mark, current-holder flag, takeover count, highest price,
+  total paid (`src/components/HistoryLedger.tsx`)
+- ✅ Holder analytics: real COUNTs from `analytics_events` (tag views,
+  unique sessions, profile views, share visits, CTA clicks, by-domain,
+  by-day) at owner-only `/u/[handle]/analytics`; honest empty states when
+  no datastore or no traffic; no fabricated numbers anywhere
+- ✅ New analytics events in taxonomy: `tag_viewed`, `profile_viewed`,
+  `cta_clicked`, `profile_updated` — all wired to real emit sites
+- ✅ Discovery: Fastest Rising (challenger-driven rises only, 7-day window)
+  and Newly Claimed (first claims only), both derived from the immutable
+  ledger with tests; no fabricated popularity
+- ✅ Share: native share sheet where supported, X intent, copy post/link,
+  `?via=` attribution retained
+- ✅ Receipt + OG cards: Priced branding, previous holder, next challenge
+  price when still held, https/env-based host (defaults to priced.game)
+- 🔒 Priced Credits: spec + ledger migration exist, flag OFF, no surface
+  (docs/CREDITS.md). Activation requires the consistency gates listed there
+- ✅ Public copy contains no em/en dashes; AI-marketing patterns removed
+
 ## Market
 
 - ✅ Atomic transaction: `finalize_takeover` RPC, row-locked, version-checked (db/schema.sql)

@@ -1,4 +1,4 @@
--- Internet Price Tag — identity, quotes, payment observability, moderation.
+-- Priced — identity, quotes, payment observability, moderation.
 -- Run AFTER db/schema.sql on the production Supabase/Postgres database.
 
 -- ============ PROFILES ============
@@ -8,6 +8,9 @@ create table if not exists public.profiles (
   handle text not null unique,
   display_name text,
   avatar_url text,
+  bio text check (char_length(bio) <= 280),
+  cta_label text check (char_length(cta_label) <= 40),
+  cta_url text check (char_length(cta_url) <= 300),
   created_at timestamptz not null default now(),
   suspended_at timestamptz
 );

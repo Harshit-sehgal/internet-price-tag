@@ -122,9 +122,45 @@ test.describe("long domain through the loop", () => {
     await page.getByRole("button", { name: "Continue to payment" }).click();
     await page.getByRole("button", { name: "Pay (succeed)" }).click();
     await expect(page).toHaveURL(/\/success\//, { timeout: 10_000 });
-    await page.getByRole("link", { name: "Defend it — view the tag" }).click();
+    await page.getByRole("link", { name: "Defend it · view the tag" }).click();
     await expect(page).toHaveURL(new RegExp(`/domain/${domain}$`));
     await expect(page.getByText("@smoketest").first()).toBeVisible();
     await expect(page.getByRole("button", { name: /Take it for \$10/ })).toBeVisible();
+  });
+});
+
+test.describe("states QA (§17)", () => {
+  test.use({ viewport: { width: 375, height: 667 } });
+
+  test("reserved domain shows the unavailable state without overflow", async ({ page }) => {
+    await page.goto("/domain/fbi.gov");
+    await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
+    await expect(page.getByText("reserved by the operator")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("invalid domain shows the error state without overflow", async ({ page }) => {
+    await page.goto("/domain/not a domain");
+    await expect(page.getByText("That's not a domain we can price.")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("expired/stale quote state fits without overflow", async ({ page }) => {
+    await page.goto("/takeover/00000000-0000-4000-8000-000000000000");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Quote not found.");
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("unknown receipt state fits without overflow", async ({ page }) => {
+    await page.goto("/success/00000000-0000-4000-8000-000000000000");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Receipt not found.");
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("logged-out homepage exposes login and the market", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: "Log in" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /openai\.com/ }).first()).toBeVisible();
+    await expectNoHorizontalOverflow(page);
   });
 });

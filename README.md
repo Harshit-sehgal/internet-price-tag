@@ -1,12 +1,12 @@
-# The Internet Price Tag
+# Priced
 
-[![CI](https://github.com/Harshit-sehgal/internet-price-tag/actions/workflows/ci.yml/badge.svg)](https://github.com/Harshit-sehgal/internet-price-tag/actions/workflows/ci.yml)
+[![CI](https://github.com/Harshit-sehgal/priced/actions/workflows/ci.yml/badge.svg)](https://github.com/Harshit-sehgal/priced/actions/workflows/ci.yml)
 
 **How much is the internet worth?**
 
-The Internet Price Tag is a competitive internet game where people pay to become the current **symbolic holder** of familiar domain names such as `google.com`, `openai.com`, `apple.com`, a friend's site, a competitor, or their own startup.
+Priced is a competitive internet game where people pay to become the current **symbolic holder** of familiar domain names such as `google.com`, `openai.com`, `apple.com`, a friend's site, a competitor, or their own startup.
 
-Nobody receives the real domain, website, company, trademark, IP, equity, DNS control, or legal ownership. A purchase changes only the public Internet Price Tag and holder shown inside this product.
+Nobody receives the real domain, website, company, trademark, IP, equity, DNS control, or legal ownership. A purchase changes only the public price tag and holder shown inside Priced.
 
 ## Core loop
 
@@ -30,11 +30,30 @@ The challenger pays the **full next price**, not only the increment. Money is st
 
 ## Repository status
 
-The previous UI direction has been rejected and **has been replaced**. The current app is a ledger-style "Internet Exchange" design built from scratch (off-white paper, hard rules, tabular numerals, no SaaS cards/gradients).
+**Implemented (Priced core):** market homepage with search, activity, most
+contested, fastest rising and newly claimed; domain pages with transparent
+price math and permanent provenance ledger (previous holder, price delta,
+first claims, totals); holder profiles with optional bio, avatar fields and a
+safe external CTA shown on the profile and on held tags; owner-only holder
+analytics at `/u/[handle]/analytics` (real counts from `analytics_events`,
+honest empty states); server-authoritative quotes (5-minute TTL), versioned
+atomic takeovers (Postgres `FOR UPDATE` RPC + in-memory mirror for demo),
+Supabase SSR auth + immutable handles, reserved-domain and IDN protections,
+Dodo Payments (launch default) + Stripe adapter + demo provider with
+idempotent webhooks and stale-quote auto-refund, share attribution + branded
+OG cards, realtime display sync, persistent analytics, versioned migrations,
+structured payment logging, and CI covering lint, typecheck, unit,
+integration, dockerized real-Postgres RPC races, browser (desktop + mobile +
+375/430/tablet viewports), production build and a live-HTTP race test.
 
-**Implemented (V1 core):** market homepage with search and activity feed, domain pages with price-transparency math and history, lightweight `/u/[handle]` holder profiles, server-authoritative quotes (5-minute TTL), versioned atomic takeovers (DB `FOR UPDATE` + in-memory mirror), Supabase SSR auth proxy + handle onboarding, reserved-domain blocklist + IDN/punycode rejection + RLS lockdown + CSRF guards, Dodo Payments (launch default) + Stripe adapter + signed-demo providers with idempotent webhooks and stale-quote auto-refund, share/attribution (`?via=share` → `share_visit`) + dynamic OG cards, realtime display sync, persistent funnel analytics (`analytics_events` + `POST /api/analytics`), versioned Supabase migrations (`supabase/migrations/` ↔ `db/*.sql`), structured payment logging (§56), operator SQL, robots/sitemap SEO gates, and full test coverage (unit + concurrency + §54 Playwright desktop & mobile against the production build in demo mode — see `DEPLOY.md` for the owner-gated go-live runbook).
+**Not active:** Priced Credits (spec + ledger exist, flag off, see
+[docs/CREDITS.md](./docs/CREDITS.md)).
 
-**Not yet done before real-money launch:** create Supabase project (apply `db/schema.sql` then `db/schema-extended.sql`, enable Google/magic-link auth), add Dodo test credentials + PWYW product id then live keys + webhook secret, set Vercel envs (split Preview/Production per §58), run the §76 sandbox payment gate on test keys, get professional legal review of the plain-language terms/privacy/refunds pages — then wire Vercel log alerts on the `error`-level payment events from `src/lib/logger.ts` (§56).
+**Not yet done before real-money launch:** create the Supabase project and
+apply migrations, add Dodo sandbox credentials then live keys + webhook
+secret + PWYW product, configure Upstash, deploy to Vercel with split
+Preview/Production envs, run the sandbox payment matrix, get legal review of
+the policy pages, then wire alerts. LAUNCH_CHECKLIST.md tracks every gate.
 
 The reusable foundation is:
 
@@ -52,12 +71,12 @@ Read **[PROJECT_BLUEPRINT.md](./PROJECT_BLUEPRINT.md)** before changing the prod
 
 Also see:
 
-- [MARKET_RULES.md](./MARKET_RULES.md) — exact market mechanics
-- [supabase/migrations/](./supabase/migrations/) — versioned migrations (canonical history) + [db/schema.sql](./db/schema.sql) + [db/schema-extended.sql](./db/schema-extended.sql) — portable single-apply equivalents, RLS, atomic takeover RPC
-- [db/ops.sql](./db/ops.sql) — operator moderation tooling
-- [src/lib/game.ts](./src/lib/game.ts) — deterministic market engine
-- [src/lib/game.test.ts](./src/lib/game.test.ts) — market-rule tests
-- [tests/integration/concurrency.test.ts](./tests/integration/concurrency.test.ts) — race-condition suite
+- [MARKET_RULES.md](./MARKET_RULES.md) · exact market mechanics
+- [supabase/migrations/](./supabase/migrations/) · versioned migrations (canonical history) + [db/schema.sql](./db/schema.sql) + [db/schema-extended.sql](./db/schema-extended.sql) · portable single-apply equivalents, RLS, atomic takeover RPC
+- [db/ops.sql](./db/ops.sql) · operator moderation tooling
+- [src/lib/game.ts](./src/lib/game.ts) · deterministic market engine
+- [src/lib/game.test.ts](./src/lib/game.test.ts) · market-rule tests
+- [tests/integration/concurrency.test.ts](./tests/integration/concurrency.test.ts) · race-condition suite
 
 ## Technical direction
 
