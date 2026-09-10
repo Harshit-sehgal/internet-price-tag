@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { createAuthClient, isAuthConfigured } from "@/lib/auth";
 import { track } from "@/lib/analytics";
+import { sanitizeInternalPath } from "@/lib/navigation";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
-  const next = url.searchParams.get("next") || "/";
-
-  // Only redirect to same-origin relative paths (open-redirect guard, §46).
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = sanitizeInternalPath(url.searchParams.get("next"));
 
   if (!isAuthConfigured) return NextResponse.redirect(new URL("/login", url.origin));
   if (!code) return NextResponse.redirect(new URL("/login", url.origin));

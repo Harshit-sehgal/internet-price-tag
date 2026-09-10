@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { claimHandle, getViewer, demoViewer } from "@/lib/auth";
 import { rateLimit } from "@/lib/ratelimit";
+import { sanitizeInternalPath } from "@/lib/navigation";
 
 export async function POST(req: Request) {
   // JSON-only: cross-origin form posts cannot produce this content type (§46 CSRF).
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
     if (raw.length > 4_096) return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
     const body = JSON.parse(raw || "{}") as { handle?: string; next?: string };
     handle = body.handle ?? "";
-    next = body.next && body.next.startsWith("/") && !body.next.startsWith("//") ? body.next : "/";
+    next = sanitizeInternalPath(body.next);
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
