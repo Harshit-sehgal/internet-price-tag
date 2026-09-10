@@ -56,7 +56,9 @@ async function redisCheck(key: string, limit: number, windowMs: number): Promise
     const res = await fetch(`${cfg.url}/eval`, {
       method: "POST",
       headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(["EVAL", WINDOW_LUA, "1", namespaced, String(windowMs)]),
+      // The `/eval` REST route already selects the Redis EVAL command. Its
+      // request body starts with the Lua script, not another `EVAL` token.
+      body: JSON.stringify([WINDOW_LUA, "1", namespaced, String(windowMs)]),
       signal: AbortSignal.timeout(1500),
     });
     if (!res.ok) return false; // fail closed
