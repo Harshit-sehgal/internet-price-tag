@@ -4,19 +4,19 @@
 > by a different person/agent without blocking the others. Do the owner-gated
 > lane first — everything else depends on it.
 
-Status: `code` = work to do in this repo · `owner` = needs accounts/credentials/legal · `verify` = run on a real deployment.
+Status: `code` = work to do in this repo · `owner` = needs accounts/credentials/legal · `verify` = run on a real deployment. Current evidence is recorded in `LAUNCH_CHECKLIST.md` and `INTEGRATION_NOW.md`.
 
 ## Lane A — Owner-gated infra (do first, blocks all real-money verification)
 
 | # | Task | Type | Owner | Notes |
 |---|------|------|-------|-------|
-| A1 | Verify the existing **Supabase** project + hosted hardening state; apply only missing migrations if any | owner | repo owner | `INTEGRATION_NOW.md` · `DEPLOY.md §1` |
-| A2 | Enable **Supabase Auth** providers (Google OAuth + email magic link) + set Site URL + redirect URLs | owner | owner | Needs Google Cloud OAuth client |
-| A3 | Enable **Supabase Realtime** + **backups/PITR** (7-day window) | owner | owner | `DEPLOY.md §7` |
-| A4 | Create one free **Upstash Redis** DB for the designated beta environment and set `UPSTASH_REDIS_REST_URL/TOKEN` there | owner | owner | Database `priced-beta-redis` is created in the new Upstash account; transmit credentials only to Vercel Production after just-in-time confirmation. `DEPLOY.md §3`; ordinary untrusted previews stay secret-free |
-| A5 | Get **test** credentials + create/reuse approved PWYW one-time product → copy `DODO_PAYMENTS_PRODUCT_ID` | owner | owner | `DEPLOY.md §2` · `DODO_COMPLIANCE_GATE.md` |
-| A6 | Add Dodo webhook `https://<domain>/api/webhooks/payments` (test endpoint) → copy `DODO_PAYMENTS_WEBHOOK_KEY` | owner | owner | Subscribe to `payment.succeeded/failed/cancelled` |
-| A7 | **Vercel**: project rename is complete; configure designated beta env separation (Production vs Preview) | owner | owner | `DEPLOY.md §3` — no custom domain required for sandbox; never share privileged beta secrets with previews |
+| A1 | Verify the existing **Supabase** project + hosted hardening state; apply only missing migrations if any | owner | repo owner | **Staging verified** for project, migrations, health, and auth; hosted Postgres/backup CLI access remains Owner blocked. `INTEGRATION_NOW.md` · `DEPLOY.md §1` |
+| A2 | Enable **Supabase Auth** providers (Google OAuth + email magic link) + set Site URL + redirect URLs | owner | owner | **Staging verified** for Google OAuth, callback, welcome, logout/re-login, and saved `@harshit` handle |
+| A3 | Enable **Supabase Realtime**; keep PITR off during free beta and test logical backups before real money | owner | owner | Realtime configuration is complete; live two-session event verification and the logical backup test remain. `DEPLOY.md §7` |
+| A4 | Create one free **Upstash Redis** DB for the designated beta environment and set `UPSTASH_REDIS_REST_URL/TOKEN` there | owner | owner | **Staging verified (partial)**: `priced-beta-redis` is wired to Vercel Production, direct Redis checks pass, and the authenticated handle burst returns 429. Full rate-limit matrix remains. `DEPLOY.md §3`; ordinary untrusted previews stay secret-free |
+| A5 | Get **test** credentials + create/reuse approved PWYW one-time product → copy `DODO_PAYMENTS_PRODUCT_ID` | owner | owner | **Staging verified** for configured Dodo Test Mode product and real checkout. `DEPLOY.md §2` · `DODO_COMPLIANCE_GATE.md` |
+| A6 | Add Dodo webhook `https://<domain>/api/webhooks/payments` (test endpoint) → copy `DODO_PAYMENTS_WEBHOOK_KEY` | owner | owner | **Staging verified (partial)**: signed success and failed payment paths reached the hosted endpoint; full matrix remains. Subscribe to `payment.succeeded/failed/cancelled` |
+| A7 | **Vercel**: project rename is complete; configure designated beta env separation (Production vs Preview) | owner | owner | **Staging verified**: existing project is renamed `priced`, `main` deploys, and privileged secrets remain Production-only. `DEPLOY.md §3` |
 | A8 | Set `SENTRY_DSN` + **Vercel Log Drains** + `/api/health` uptime check; alert on `refund_failed`, `takeover_finalization_error`, `webhook_*_failed`, `webhook_signature_invalid` spikes | owner | owner | `DEPLOY.md §8` |
 | A9 | Turnstile widget (optional) + Dodo fraud/risk features in dashboard | owner | owner | `DEPLOY.md §3` |
 
@@ -24,11 +24,11 @@ Status: `code` = work to do in this repo · `owner` = needs accounts/credentials
 
 | # | Task | Type | Depends | How |
 |---|------|------|---------|-----|
-| B1 | **Dodo sandbox matrix** (§76 gate) — success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage on a preview deploy with test keys | verify | A5–A7 | `DEPLOY.md §4` — record results, no unexplained states |
-| B2 | **Real Postgres concurrency** — run `tests/integration/postgres.finalize.test.ts` against preview Supabase | verify | A1 | `RUN_POSTGRES_TESTS=1 NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run test:postgres` (also covers `holder_analytics` RPC + `credit_ledger` migration; dockerized equivalent: `npm run test:pg` = 10 cases, CI-green) |
-| B3 | **Staging smoke** — health, analytics taxonomy, CSRF guards, auth redirect, routing | verify | A7 | `STAGING_URL=https://<preview>.vercel.app npm run smoke:staging` (`scripts/staging-smoke.mjs`) |
-| B4 | **Realtime** + browser loop on staging — search → domain → quote → checkout → webhook → sale → receipt → profile → market update → share | verify | A1–A7 | `tests/browser/loop.spec.ts` against `STAGING_URL` + manual check |
-| B5 | **Rate-limit across instances** — prove 429s from Upstash (burst quote/checkout/handle) on preview with Redis | verify | A4 | Hit `POST /api/quotes` / `POST /api/checkout` 30× fast; expect 429s, no 500s. `tests/load/race.mjs` already accounts for 429s. |
+| B1 | **Dodo sandbox matrix** (§76 gate) — complete cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage cases on the hosted beta with test keys | verify | A5–A7 | **Staging verified (partial)** for success/fail/signed webhook/atomic finalization; complete the remaining cases per `DEPLOY.md §4` and record no unexplained states |
+| B2 | **Real Postgres concurrency** — run `tests/integration/postgres.finalize.test.ts` against the real Priced Supabase project | verify | A1 | **Owner blocked** until authenticated database access is available: `RUN_POSTGRES_TESTS=1 NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run test:postgres`; dockerized equivalent remains CI-green |
+| B3 | **Staging smoke** — health, analytics taxonomy, CSRF guards, auth redirect, routing | verify | A7 | **Staging verified**: `STAGING_URL=https://internet-price-tag.vercel.app npm run smoke:staging` passes all 9 checks |
+| B4 | **Realtime** + browser loop on staging — search → domain → quote → checkout → webhook → sale → receipt → profile → market update → share | verify | A1–A7 | Hosted success journey, profile, analytics, receipt, and share are verified; live two-session Realtime update remains. `tests/browser/loop.spec.ts` against `STAGING_URL` + manual check |
+| B5 | **Rate-limit across instances** — prove 429s from Upstash (burst quote/checkout/handle) on the hosted beta with Redis | verify | A4 | **Staging verified (partial)**: Redis PING/EVAL and authenticated handle burst pass with 429/no 5xx; complete quote/checkout/user/IP/domain matrix. `tests/load/race.mjs` already accounts for 429s. |
 
 ## Lane C — Code hardening (can run in parallel, no infra needed)
 

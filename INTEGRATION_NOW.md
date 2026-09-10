@@ -27,9 +27,11 @@ This file is the current authority for the next execution phase and overrides ol
 - The stable Production environment has `NEXT_PUBLIC_APP_URL`, the three Supabase variables, the four Dodo Test Mode variables, and the two Upstash Redis variables configured. Ordinary Preview deployments remain demo-only and do not receive privileged credentials.
 - Supabase Site URL is `https://internet-price-tag.vercel.app` and the `/auth/callback` redirect is configured. Google Auth Platform branding and a Web OAuth client are configured for `Priced`; Supabase Google sign-in is enabled, and a real browser login returned through the callback to Priced's welcome/handle setup page.
 - Dodo Test Mode contains the approved `Priced Takeover` Pay What You Want product with a $5 minimum and a signed webhook endpoint at `https://internet-price-tag.vercel.app/api/webhooks/payments`. No live mode or real-money configuration has been enabled.
-- The Dodo webhook endpoint is enabled and filtered to `payment.succeeded`, `payment.failed`, and `payment.cancelled`, matching the current Dodo event catalog. No delivery attempts have been generated yet because the real sandbox transaction matrix is still pending authenticated handle setup.
+- The Dodo webhook endpoint is enabled and filtered to `payment.succeeded`, `payment.failed`, and `payment.cancelled`, matching the current Dodo event catalog. A real Dodo Test Mode success and a declined test-card payment were exercised after authentication; the signed success webhook reached Vercel with HTTP 200 and logged `takeover_succeeded`, and the quote was consumed exactly once. Dodo's endpoint overview still shows no delivery-attempt count even though the hosted runtime log records the accepted POST; the full sandbox matrix remains outstanding.
 - Production liveness and Supabase readiness checks pass: `/api/health` returns `ok: true`, and `/api/health?check=db` returns `datastore: supabase` and `db: ok`.
 - A new free-tier Upstash account was checked and its designated `priced-beta-redis` database was created in N. California (`us-west-1`). The existing `promptpay-staging-redis` database in the other account was left untouched. Its REST URL and write token are configured only in Vercel Production, and a fresh Production deployment completed successfully.
+- The authenticated beta user selected and saved the permanent public handle `@harshit`. The hosted domain, profile, receipt, share URL, and owner-only analytics page render successfully; real hosted analytics now show tag views, profile views, and share visits.
+- The hosted staging smoke passes all 9 checks, and `/api/health` plus `/api/health?check=db` are healthy. A production handle-rate-limit burst returned `429 rate_limited` without 5xx responses; the complete quote/checkout/user/IP/domain matrix is still outstanding.
 - Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
 
 ## Do not redo
@@ -53,7 +55,7 @@ Do not create paid infrastructure without explicit owner approval.
 5. Wire the Priced Supabase public URL/key and server-only service-role key into that designated environment. **Implemented.**
 6. Configure Supabase Site URL and redirects using the stable origin. **Implemented.**
 7. Configure Google OAuth as the primary beta login. **Implemented.**
-8. Verify login, OAuth callback, welcome, handle creation, logout, and repeat login. **Owner blocked** only at choosing the permanent public handle; Google login, callback, and welcome are verified.
+8. Verify login, OAuth callback, welcome, handle creation, logout, and repeat login. **Staging verified** with Google OAuth and the saved public handle `@harshit`.
 9. Keep ordinary untrusted PR previews in demo mode without service-role or Dodo credentials. **Implemented.**
 
 ### Track B: Dodo Payments
@@ -63,7 +65,7 @@ Do not create paid infrastructure without explicit owner approval.
 3. Configure `DODO_PAYMENTS_API_KEY`, `DODO_PAYMENTS_MODE=test`, `DODO_PAYMENTS_PRODUCT_ID`, and `DODO_PAYMENTS_WEBHOOK_KEY` in the designated beta environment only. **Implemented.**
 4. Configure the signed webhook endpoint at `https://<stable-beta-origin>/api/webhooks/payments`. **Implemented.**
 5. Verify event names and payload fields against current Dodo docs before changing code. **Implemented**: the current Dodo event catalog lists `payment.succeeded`, `payment.failed`, and `payment.cancelled`, and the endpoint is filtered to those three events.
-6. Run real signed sandbox transactions and the full payment-state matrix. **Owner blocked** until the authenticated beta login path is available.
+6. Run real signed sandbox transactions and the full payment-state matrix. **Staging verified** for a successful payment, a declined payment, signed webhook delivery, quote consumption, and atomic takeover finalization; the remaining duplicate/cancelled/stale/refund/race cases are outstanding.
 7. Validate stale quote refunds, wrong-amount refunds, idempotency, duplicate webhooks, retries, simultaneous challengers, provider failure, and refund failure.
 8. Do not enable live mode until the complete integration gate is green.
 
@@ -71,7 +73,7 @@ Do not create paid infrastructure without explicit owner approval.
 
 1. Create one free Upstash Redis database for the designated beta environment. **Implemented** (`priced-beta-redis`, Free Tier, `us-west-1`).
 2. Configure the REST URL/token only in that environment. **Implemented** in Vercel Production; the token is stored as a Secret and the URL as a Config variable.
-3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances. **Partially verified**: the authenticated Production `/api/handle` burst returned `429 rate_limited` after the configured limit with no 5xx; the full matrix is pending permanent handle setup.
+3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances. **Staging verified** for the authenticated handle burst and Redis connectivity; the full quote/checkout/user/IP/domain matrix remains outstanding.
 4. Use free logs and free uptime checks initially.
 5. Check `/api/health` and `/api/health?check=db`.
 6. Watch structured critical events during sandbox testing.
@@ -80,12 +82,12 @@ Do not create paid infrastructure without explicit owner approval.
 
 Start after Tracks A-C have usable hosted resources.
 
-1. Run hosted Postgres/RPC tests against the real Priced Supabase project.
-2. Run 10 and 25 simultaneous challenger races. Exactly one takeover may finalize for one version.
-3. Run `npm run smoke:staging` against the stable beta deployment.
-4. Verify Realtime across two sessions.
-5. Complete the real journey: search, login, handle, quote, Dodo sandbox checkout, signed webhook, finalization, history, profile, analytics, CTA, share, share visit.
-6. Verify analytics events and holder aggregation using real sandbox activity.
+1. Run hosted Postgres/RPC tests against the real Priced Supabase project; this is currently **Owner blocked** by the missing authenticated database CLI/service-role access.
+2. Run 10 and 25 simultaneous challenger races against the hosted environment. Exactly one takeover may finalize for one version; this remains unrun.
+3. Run `npm run smoke:staging` against the stable beta deployment. **Staging verified** (9 checks pass).
+4. Verify Realtime across two sessions, including a live market update.
+5. Complete the real journey: search, login, handle, quote, Dodo sandbox checkout, signed webhook, finalization, history, profile, analytics, CTA, share, and share visit. **Staging verified** for the exercised success path.
+6. Verify analytics events and holder aggregation using real sandbox activity. **Staging verified** with hosted tag, profile, and share events and non-empty holder analytics.
 7. Verify security headers and direct RPC denial for anon/authenticated roles.
 8. Verify mobile layouts at 375, 430 and 768 px and perform one real-device check where possible.
 
