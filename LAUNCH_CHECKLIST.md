@@ -40,18 +40,18 @@ Nothing is marked beyond the level actually evidenced.
 |---|---|---|
 | Dodo provider: PWYW checkout, Standard-Webhooks verify, refunds | Implemented; CI-verified logic | `tests/integration/dodo.test.ts` (network stubbed) |
 | Dodo permission check for symbolic-status product | Implemented | Owner confirmed Dodo product verification/approval; do not reopen unless Dodo requests it |
-| Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Owner blocked (needs A5–A7) | Staging smoke script ready: `npm run smoke:staging`; matrix procedure in DEPLOY.md §4. Not run: no test credentials yet. |
+| Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Owner blocked | Test product, API key, and signed webhook are configured in Vercel Production; real transaction matrix remains pending authenticated beta login and hosted execution. Procedure: `DEPLOY.md` §4. |
 | Live Dodo configuration | Owner blocked | DEPLOY.md §6 |
 
 ## Infrastructure
 
 | Item | Status | Evidence |
 |---|---|---|
-| Supabase project + migrations + auth + Realtime + backups | Owner blocked | Existing Priced project and hosted-hardening migrations are the source of truth; Auth URL/provider wiring and production backup policy remain owner-gated. See `INTEGRATION_NOW.md`. |
+| Supabase project + migrations + auth + Realtime + backups | Implemented | Existing Priced project and hosted-hardening migrations are the source of truth; Site URL and `/auth/callback` are configured, and `/api/health?check=db` is production-healthy. Google OAuth acceptance, full auth flow, and pre-money logical backup test remain pending. See `INTEGRATION_NOW.md`. |
 | Real-Postgres RPC concurrency (10 + 25 racers) | Locally verified (docker postgres:16); staging pending | `npm run test:pg` — 10/10 pass incl. `holder_analytics` RPC aggregation test |
-| Upstash Redis + distributed rate limits | Owner blocked (code CI-verified) | `tests/integration/ratelimit.test.ts`; fail-closed verified; A4 needs the actual DB |
+| Upstash Redis + distributed rate limits | External provider blocked | `tests/integration/ratelimit.test.ts`; fail-closed verified. The authenticated Upstash account already has its only free database allocated to `promptpay-staging-redis`; it was left untouched. |
 | Vercel project rename `internet-price-tag` → `priced` | Implemented | Existing project renamed through the authenticated Vercel CLI; project id preserved and production alias remains `https://internet-price-tag.vercel.app` |
-| Env separation (Local/Preview/Production) | Owner blocked | Matrix in `.env.example`; only the non-sensitive Production `NEXT_PUBLIC_APP_URL` is configured, while privileged beta secrets remain absent from ordinary previews |
+| Env separation (Local/Preview/Production) | Implemented | Matrix in `.env.example`; Supabase and Dodo Test Mode credentials are configured only in Vercel Production, while ordinary previews remain secret-free/demo-only. |
 | Monitoring/alerts (error-event list, uptime, 5xx rate) | Implemented (docs + structured logs); wiring owner blocked | DEPLOY.md §8: exact log-drain queries + uptime endpoints; A8 wires destinations |
 | Health endpoint (liveness + `?check=db` readiness) | CI verified | `tests/integration/health-analytics.test.ts` + CI smoke step |
 
@@ -97,16 +97,15 @@ Nothing is marked beyond the level actually evidenced.
 
 ## Owner gates remaining (in order — exact actions in DEPLOY.md)
 
-1. **Supabase/Auth** (§1): sign in to the existing Priced project, verify Google + magic-link auth, configure Site URL/redirects, verify Realtime, and copy the three env keys.
-2. **Upstash** (§3/A4): create one free Redis database for the designated beta environment, set `UPSTASH_REDIS_REST_URL/TOKEN` there, and keep ordinary previews secret-free.
-3. **Dodo** (§2/A5): obtain test credentials, create/reuse the approved PWYW one-time product, and configure `DODO_PAYMENTS_PRODUCT_ID` + `DODO_PAYMENTS_WEBHOOK_KEY` for the stable beta endpoint.
-4. **Vercel** (§3): configure the designated beta environment on the existing `priced` project; no custom domain is required for sandbox.
-5. **Sandbox gate** (§4/B1): on preview with test keys run the full Dodo matrix + `npm run test:postgres` against real Supabase + `npm run smoke:staging`.
-6. **Monitoring** (§8/A8): wire Log Drain alerts per the query patterns, uptime checks on `/api/health(+?check=db)`, optional `SENTRY_DSN`.
-7. **Legal review** of policy pages (D1).
-8. **Live keys** (D2): swap to live Dodo config in Production only.
-9. **Closed beta** (D3): 10–20 people; watch `takeover_succeeded`, `refund_failed`, share-visits; measure repeat-challenge rate (§35 metrics list).
-10. **Public launch** only after §37 gate is fully green.
+1. **Supabase/Auth** (§1): accept Google’s User Data Policy, create the OAuth client, enable Google, then verify login, callback, welcome, handle creation, logout, repeat login, and Realtime.
+2. **Upstash** (§3/A4): obtain a separate free-tier database or authorize use of a paid/additional database; set `UPSTASH_REDIS_REST_URL/TOKEN` only in the designated beta environment. Current status: External provider blocked by the existing free-tier quota.
+3. **Sandbox gate** (§4/B1): after auth and Redis are available, run the full Dodo matrix, `npm run test:postgres` against real Supabase, and `npm run smoke:staging` against the stable beta deployment.
+4. **Monitoring** (§8/A8): wire Log Drain alerts per the query patterns, uptime checks on `/api/health(+?check=db)`, and optional `SENTRY_DSN`.
+5. **Backup test**: create and test the documented logical backup procedure before accepting real customer money; do not enable PITR during the free beta phase.
+6. **Legal review** of policy pages (D1).
+7. **Live keys** (D2): swap to live Dodo config in Production only after every sandbox gate is green and plan compliance is reviewed.
+8. **Closed beta** (D3): 10–20 people; watch `takeover_succeeded`, `refund_failed`, and share visits; measure repeat-challenge rate (§35 metrics list).
+9. **Public launch** only after §37 gate is fully green.
 
 ## Beta measurement plan (§35)
 

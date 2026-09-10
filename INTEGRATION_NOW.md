@@ -22,9 +22,13 @@ This file is the current authority for the next execution phase and overrides ol
 ## Recorded execution evidence (2026-09-10)
 
 - The existing Vercel project was reused and renamed from `internet-price-tag` to `priced` without creating a duplicate.
-- The stable production alias is currently `https://internet-price-tag.vercel.app` and serves the main deployment in demo mode.
+- The stable production alias is `https://internet-price-tag.vercel.app` and is connected to the renamed `priced` Vercel project.
 - Vercel Git deployment remains connected to `Harshit-sehgal/priced` with `main` as the production branch.
-- The stable Production environment has the non-sensitive `NEXT_PUBLIC_APP_URL` set to the stable alias. No privileged environment variables are configured yet; Supabase, Dodo Test Mode, and Upstash wiring remain owner-gated until credentials are available.
+- The stable Production environment has `NEXT_PUBLIC_APP_URL`, the three Supabase variables, and the four Dodo Test Mode variables configured. Ordinary Preview deployments remain demo-only and do not receive privileged credentials.
+- Supabase Site URL is `https://internet-price-tag.vercel.app` and the `/auth/callback` redirect is configured. Google OAuth is not enabled yet: Google Auth Platform setup is paused at the required User Data Policy acceptance step.
+- Dodo Test Mode contains the approved `Priced Takeover` Pay What You Want product with a $5 minimum and a signed webhook endpoint at `https://internet-price-tag.vercel.app/api/webhooks/payments`. No live mode or real-money configuration has been enabled.
+- Production liveness and Supabase readiness checks pass: `/api/health` returns `ok: true`, and `/api/health?check=db` returns `datastore: supabase` and `db: ok`.
+- Upstash wiring is not configured because the account's only free database is an existing `promptpay-staging-redis` database and the dashboard blocks another free database. That database was left untouched.
 - Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
 
 ## Do not redo
@@ -41,30 +45,30 @@ Do not create paid infrastructure without explicit owner approval.
 
 ### Track A: Vercel and auth
 
-1. Gain access to the existing Vercel project currently associated with `internet-price-tag`.
-2. Rename it to `priced` where possible rather than creating a duplicate.
-3. Ensure Git integration uses `Harshit-sehgal/priced` and `main`.
-4. Establish one stable beta/staging origin.
-5. Wire the Priced Supabase public URL/key and server-only service-role key into that designated environment.
-6. Configure Supabase Site URL and redirects using the stable origin.
-7. Configure Google OAuth as the primary beta login.
-8. Verify login, OAuth callback, welcome, handle creation, logout, and repeat login.
-9. Keep ordinary untrusted PR previews in demo mode without service-role or Dodo credentials.
+1. Gain access to the existing Vercel project currently associated with `internet-price-tag`. **Implemented.**
+2. Rename it to `priced` where possible rather than creating a duplicate. **Implemented.**
+3. Ensure Git integration uses `Harshit-sehgal/priced` and `main`. **Implemented.**
+4. Establish one stable beta/staging origin. **Implemented** with `https://internet-price-tag.vercel.app`.
+5. Wire the Priced Supabase public URL/key and server-only service-role key into that designated environment. **Implemented.**
+6. Configure Supabase Site URL and redirects using the stable origin. **Implemented.**
+7. Configure Google OAuth as the primary beta login. **Owner blocked** at Google’s required User Data Policy acceptance step.
+8. Verify login, OAuth callback, welcome, handle creation, logout, and repeat login. **Owner blocked** until Google OAuth is enabled.
+9. Keep ordinary untrusted PR previews in demo mode without service-role or Dodo credentials. **Implemented.**
 
 ### Track B: Dodo Payments
 
-1. Work in Test Mode first.
-2. Create or reuse the approved Single Payment Pay What You Want product with minimum $5.
-3. Configure `DODO_PAYMENTS_API_KEY`, `DODO_PAYMENTS_MODE=test`, `DODO_PAYMENTS_PRODUCT_ID`, and `DODO_PAYMENTS_WEBHOOK_KEY` in the designated beta environment only.
-4. Configure the signed webhook endpoint at `https://<stable-beta-origin>/api/webhooks/payments`.
+1. Work in Test Mode first. **Implemented.**
+2. Create or reuse the approved Single Payment Pay What You Want product with minimum $5. **Implemented.**
+3. Configure `DODO_PAYMENTS_API_KEY`, `DODO_PAYMENTS_MODE=test`, `DODO_PAYMENTS_PRODUCT_ID`, and `DODO_PAYMENTS_WEBHOOK_KEY` in the designated beta environment only. **Implemented.**
+4. Configure the signed webhook endpoint at `https://<stable-beta-origin>/api/webhooks/payments`. **Implemented.**
 5. Verify event names and payload fields against current Dodo docs before changing code.
-6. Run real signed sandbox transactions and the full payment-state matrix.
+6. Run real signed sandbox transactions and the full payment-state matrix. **Owner blocked** until the authenticated beta login path is available.
 7. Validate stale quote refunds, wrong-amount refunds, idempotency, duplicate webhooks, retries, simultaneous challengers, provider failure, and refund failure.
 8. Do not enable live mode until the complete integration gate is green.
 
 ### Track C: Upstash and operational checks
 
-1. Create one free Upstash Redis database for the designated beta environment.
+1. Create one free Upstash Redis database for the designated beta environment. **External provider blocked** by the account's existing free-tier database quota.
 2. Configure the REST URL/token only in that environment.
 3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances.
 4. Use free logs and free uptime checks initially.
