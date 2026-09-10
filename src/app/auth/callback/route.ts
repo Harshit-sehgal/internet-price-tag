@@ -6,13 +6,29 @@ import { sanitizeInternalPath } from "@/lib/navigation";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
+  const tokenHash = url.searchParams.get("token_hash");
+  const otpType = url.searchParams.get("type");
   const safeNext = sanitizeInternalPath(url.searchParams.get("next"));
 
   if (!isAuthConfigured) return NextResponse.redirect(new URL("/login", url.origin));
-  if (!code) return NextResponse.redirect(new URL("/login", url.origin));
+  if (!code && !tokenHash) {
+    return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(safeNext)}`, url.origin));
+  }
 
   const client = await createAuthClient();
-  const { error } = await client.auth.exchangeCodeForSession(code);
+  if (tokenHash) {
+    const { error } = await client.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: (otpType as "magiclink" | "email" | "recovery" | "email_change") ?? "magiclink",
+    });
+    if (error) {
+      return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, url.origin));
+    }
+    track("login_completed", { provider: "magic_link" });
+    return NextResponse.redirect(new URL(safeNext, url.origin));
+  }
+
+  const { error } = await client.auth.exchangeCodeForSession(code!);
   if (error) {
     return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, url.origin));
   }

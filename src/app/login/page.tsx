@@ -7,11 +7,12 @@ import { track } from "@/lib/analytics";
 function LoginInner() {
   const params = useSearchParams();
   const next = params.get("next") || "/";
+  const urlError = params.get("error");
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(urlError);
 
   useEffect(() => {
     fetch("/api/auth/mode")
@@ -22,13 +23,23 @@ function LoginInner() {
 
   async function loginWithProvider(provider: "google") {
     setBusy(true);
+    setError(null);
     track("login_started", { provider });
-    const { createAuthBrowserClient } = await import("@/lib/auth-browser");
-    const client = await createAuthBrowserClient();
-    await client.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
-    });
+    try {
+      const { createAuthBrowserClient } = await import("@/lib/auth-browser");
+      const client = await createAuthBrowserClient();
+      const { error } = await client.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
+      });
+      if (error) {
+        setError(error.message);
+        setBusy(false);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Login failed. Please try again.");
+      setBusy(false);
+    }
   }
 
   async function loginWithMagicLink(e: React.FormEvent) {
