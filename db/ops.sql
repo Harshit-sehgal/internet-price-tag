@@ -12,6 +12,12 @@ create table if not exists public.admin_audit (
 
 alter table public.admin_audit enable row level security;
 
+-- Least privilege: these are service-role-only operator tools. Postgres
+-- grants EXECUTE to PUBLIC by default and PostgREST exposes public-schema
+-- RPCs to anon/authenticated, so without explicit revokes any anon-key
+-- holder could suspend users or reserve domains. Never apply without these.
+revoke all on table public.admin_audit from anon, authenticated;
+
 -- Reserve a domain (e.g. brand protection / legal request).
 create or replace function public.ops_reserve_domain(p_domain text, p_reason text, p_by text)
 returns void language sql security definer set search_path = public as $$
@@ -45,3 +51,18 @@ $$;
 -- Usage:
 -- select public.ops_reserve_domain('example.com', 'legal request', 'operator');
 -- select public.ops_suspend_user('badactor', 'operator');
+
+-- SECURITY DEFINER functions are executable by PUBLIC unless explicitly
+-- revoked. Mirror the money-RPC hardening: service-role only.
+revoke all on function public.ops_reserve_domain(text, text, text) from public;
+revoke all on function public.ops_reserve_domain(text, text, text) from anon, authenticated;
+grant execute on function public.ops_reserve_domain(text, text, text) to service_role;
+revoke all on function public.ops_unreserve_domain(text, text) from public;
+revoke all on function public.ops_unreserve_domain(text, text) from anon, authenticated;
+grant execute on function public.ops_unreserve_domain(text, text) to service_role;
+revoke all on function public.ops_suspend_user(text, text) from public;
+revoke all on function public.ops_suspend_user(text, text) from anon, authenticated;
+grant execute on function public.ops_suspend_user(text, text) to service_role;
+revoke all on function public.ops_unsuspend_user(text, text) from public;
+revoke all on function public.ops_unsuspend_user(text, text) from anon, authenticated;
+grant execute on function public.ops_unsuspend_user(text, text) to service_role;

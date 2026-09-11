@@ -16,9 +16,9 @@ export function isUniqueViolation(e: unknown): boolean {
   if (err.code === "23505") return true;
   const msg = typeof err.message === "string" ? err.message : "";
   // Postgres error text + our in-memory mirror's duplicate-key message.
+  // Narrow: only the duplicate-key violation itself counts. Broader matches
+  // on the table name (e.g. permission errors mentioning payment_events)
+  // must stay retryable 500s, never idempotent 200s.
   if (/duplicate key value violates unique constraint/i.test(msg)) return true;
-  if (/payment_events_provider_provider_event_id_key/i.test(msg)) return true;
-  if (/unique.*constraint.*payment_events/i.test(msg)) return true;
-  if (/already exists/i.test(msg) && /payment_events/i.test(msg)) return true;
   return false;
 }

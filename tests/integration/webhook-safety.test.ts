@@ -20,6 +20,7 @@ import {
   listSalesForDomain,
   claimRefundAttempt,
   completeRefundAttempt,
+  reconcileRefundProviderEvent,
 } from "../../src/lib/repo.ts";
 import { processSucceededPayment } from "../../src/lib/takeover.ts";
 import { isUniqueViolation } from "../../src/lib/db-errors.ts";
@@ -167,6 +168,55 @@ test("successful refund ledger entries cannot be claimed twice", async () => {
   });
   assert.equal(replay.claimed, false);
   assert.equal(replay.status, "succeeded");
+});
+
+test("provider refund success reconciles manual review and cannot be downgraded", async () => {
+  const first = await claimRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-provider-event",
+    eventId: "evt-refund-provider-start",
+    reason: "stale_quote",
+    amountCents: 500,
+  });
+  assert.equal(await completeRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-provider-event",
+    claimToken: first.claimToken!,
+    status: "manual_review",
+    error: "provider pending",
+  }), true);
+
+  await reconcileRefundProviderEvent({
+    provider: "demo",
+    paymentId: "pi-refund-provider-event",
+    eventId: "evt-refund-provider-success",
+    status: "succeeded",
+    amountCents: 590,
+  });
+  const settled = await claimRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-provider-event",
+    eventId: "evt-refund-provider-replay",
+    reason: "stale_quote",
+    amountCents: 500,
+  });
+  assert.equal(settled.status, "succeeded");
+
+  await reconcileRefundProviderEvent({
+    provider: "demo",
+    paymentId: "pi-refund-provider-event",
+    eventId: "evt-refund-provider-failed-late",
+    status: "manual_review",
+    error: "late failure",
+  });
+  const stillSettled = await claimRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-provider-event",
+    eventId: "evt-refund-provider-replay-2",
+    reason: "stale_quote",
+    amountCents: 500,
+  });
+  assert.equal(stillSettled.status, "succeeded");
 });
 
 test("one quote reuses one checkout session (first-writer-wins)", async () => {

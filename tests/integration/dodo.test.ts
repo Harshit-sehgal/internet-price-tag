@@ -191,7 +191,7 @@ test("dodo checkout posts dynamic PWYW amount + quote metadata, refund posts pay
       if (u.endsWith("/checkouts")) {
         return { ok: true, status: 200, json: async () => ({ session_id: "cks_test_1", checkout_url: "https://checkout.test/s/1" }), text: async () => "" } as unknown as Response;
       }
-      return { ok: true, status: 200, json: async () => ({ refund_id: "rf_1" }), text: async () => "" } as unknown as Response;
+      return { ok: true, status: 200, json: async () => ({ refund_id: "rf_1", status: "succeeded" }), text: async () => "" } as unknown as Response;
     }) as typeof fetch;
 
     const provider = new DodoPaymentsProvider();
@@ -222,6 +222,64 @@ test("dodo checkout posts dynamic PWYW amount + quote metadata, refund posts pay
     assert.equal(seen[1].body.payment_id, "pay_test_001");
   } finally {
     globalThis.fetch = realFetch;
+    restoreEnv(snap);
+  }
+});
+
+test("dodo refund does not treat pending provider work as a completed refund", async () => {
+  const snap = snapshotEnv();
+  const realFetch = globalThis.fetch;
+  try {
+    useDodoEnv();
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ refund_id: "rf_pending", status: "pending" }),
+      text: async () => "",
+    })) as unknown as typeof fetch;
+    const result = await new DodoPaymentsProvider().refundPayment("pay_pending", "stale_quote");
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "pending");
+    assert.match(result.error ?? "", /pending/);
+  } finally {
+    globalThis.fetch = realFetch;
+    restoreEnv(snap);
+  }
+});
+
+test("dodo refund events require the original payment id", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const provider = new DodoPaymentsProvider();
+    const raw = dodoPayment({ refund_id: "rf_missing_payment", status: "succeeded" }, "refund.succeeded");
+    const result = verify(raw, "wh_refund_missing_payment");
+    assert.deepEqual(result, { ok: false, reason: "missing_payment_id" });
+    void provider;
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("dodo refund events map the associated payment id", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const raw = dodoPayment({
+      refund_id: "rf_success",
+      payment_id: "pay_refund_source",
+      amount: 590,
+      currency: "USD",
+      status: "succeeded",
+    }, "refund.succeeded");
+    const result = verify(raw, "wh_refund_success");
+    assert.ok(result.ok);
+    if (result.ok) {
+      assert.equal(result.event.status, "refunded");
+      assert.equal(result.event.paymentId, "pay_refund_source");
+      assert.equal(result.event.amountCents, 590);
+    }
+  } finally {
     restoreEnv(snap);
   }
 });

@@ -12,6 +12,15 @@ export type CheckoutResult = {
   mode: "authorize" | "charge";
 };
 
+export type RefundProviderStatus = "succeeded" | "failed" | "pending" | "review";
+
+export type RefundResult = {
+  ok: boolean;
+  status?: RefundProviderStatus;
+  refundId?: string;
+  error?: string;
+};
+
 export type WebhookVerification = { ok: true; event: ProviderEvent } | { ok: false; reason: string };
 
 /**
@@ -122,7 +131,7 @@ export interface PaymentProvider {
     cancelUrl: string;
   }): Promise<CheckoutResult>;
   verifyWebhook(payload: string, signature: string | null, headers?: WebhookVerifyHeaders): WebhookVerification;
-  refundPayment(paymentId: string, reason: string): Promise<{ ok: boolean; error?: string }>;
+  refundPayment(paymentId: string, reason: string): Promise<RefundResult>;
 }
 
 export class ProviderNotConfiguredError extends Error {
@@ -206,7 +215,7 @@ class DemoProvider implements PaymentProvider {
     }
   }
 
-  async refundPayment(): Promise<{ ok: boolean; error?: string }> {
+  async refundPayment(): Promise<RefundResult> {
     return { ok: true };
   }
 }
@@ -283,7 +292,7 @@ class StripeProvider implements PaymentProvider {
     return verifyStripeWebhookSync(payload, signature, secret);
   }
 
-  async refundPayment(paymentId: string): Promise<{ ok: boolean; error?: string }> {
+  async refundPayment(paymentId: string): Promise<RefundResult> {
     try {
       const stripe = await loadStripe();
       await stripe.refunds.create({ payment_intent: paymentId, reason: "requested_by_customer" });
@@ -499,7 +508,7 @@ export class DodoPaymentsProvider implements PaymentProvider {
     return verifyDodoWebhookSync(payload, signature, headers?.webhookId ?? null, headers?.webhookTimestamp ?? null, secret);
   }
 
-  async refundPayment(paymentId: string, reason: string): Promise<{ ok: boolean; error?: string }> {
+  async refundPayment(paymentId: string, reason: string): Promise<RefundResult> {
     try {
       const res = await fetch(`${this.baseUrl}/refunds`, {
         method: "POST",
@@ -513,7 +522,17 @@ export class DodoPaymentsProvider implements PaymentProvider {
         const detail = await res.text().catch(() => "");
         return { ok: false, error: `dodo refund http ${res.status}: ${detail.slice(0, 300)}` };
       }
-      return { ok: true };
+      const body = (await res.json().catch(() => null)) as {
+        status?: unknown;
+        refund_id?: unknown;
+      } | null;
+      const status = body?.status;
+      const refundId = typeof body?.refund_id === "string" ? body.refund_id : undefined;
+      if (status === "succeeded") return { ok: true, status, refundId };
+      if (status === "pending" || status === "review" || status === "failed") {
+        return { ok: false, status, refundId, error: `dodo refund status: ${status}` };
+      }
+      return { ok: false, error: "dodo refund response missing a recognized status" };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -586,12 +605,14 @@ function verifyDodoWebhookSync(
     if (!type) return { ok: false, reason: "missing_event_type" };
     const data = body.data ?? {};
 
-    // DEPLOY: the Dodo endpoint is configured for payment.succeeded /
-    // payment.failed / payment.cancelled plus `dispute.*` (opened, challenged,
-    // accepted, cancelled, expired, won, lost). Without the dispute filter,
+    // DEPLOY: the Dodo endpoint is configured for the three payment events,
+    // refund.succeeded / refund.failed, plus `dispute.*` (opened, challenged,
+    // accepted, cancelled, expired, won, lost). Without the refund filter,
+    // asynchronous refunds cannot reconcile; without the dispute filter,
     // chargebacks never reach this handler and a buyer can keep both the tag
     // and the money.
     const isDispute = type.startsWith("dispute.");
+    const isRefund = type === "refund.succeeded" || type === "refund.failed";
     const status: ProviderEvent["status"] = isDispute
       ? "disputed"
       : type === "payment.succeeded"
@@ -604,12 +625,12 @@ function verifyDodoWebhookSync(
 
     const paymentId =
       (typeof data.payment_id === "string" && data.payment_id) ||
-      (typeof data.id === "string" && data.id) ||
+      (!isRefund && typeof data.id === "string" && data.id) ||
       "";
     // payment.failed may arrive without a payment object in edge cases;
     // failed/other events are observability-only, so allow empty payment id.
     // Succeeded events must carry one — otherwise finalization is impossible.
-    if (!paymentId && status === "succeeded") return { ok: false, reason: "missing_payment_id" };
+    if (!paymentId && (status === "succeeded" || isRefund)) return { ok: false, reason: "missing_payment_id" };
 
     const meta = (data.metadata ?? {}) as Record<string, unknown>;
     const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);

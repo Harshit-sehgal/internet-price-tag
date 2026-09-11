@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getPaymentEvent, isProdDatastore, recordPaymentEvent, markPaymentEventStatus } from "@/lib/repo";
+import { getPaymentEvent, isProdDatastore, recordPaymentEvent, markPaymentEventStatus, reconcileRefundProviderEvent } from "@/lib/repo";
 import { expectedSettlementCurrency, getConfiguredProviderName, getPaymentProvider, recordPaymentDispute } from "@/lib/payments";
 import { processSucceededPayment } from "@/lib/takeover";
 import { logEvent } from "@/lib/logger";
@@ -20,11 +20,11 @@ export const dynamic = "force-dynamic";
  * Only a unique-constraint violation on payment_events is treated as a
  * duplicate; every other DB error returns 500.
  *
- * DEPLOY: the Dodo endpoint must be subscribed to `payment.succeeded`,
- * `payment.failed`, `payment.cancelled` AND the `dispute.*` events. Without the
- * dispute filter, chargebacks never reach this handler at all and a buyer can
- * keep both the tag and the money. The Stripe adapter needs `charge.dispute.*`
- * for the same reason.
+ * DEPLOY: the Dodo endpoint must be subscribed to the three payment events,
+ * `refund.succeeded`, `refund.failed`, AND the `dispute.*` events. Without the
+ * refund filter, asynchronous provider refunds cannot reconcile the durable
+ * ledger; without the dispute filter, chargebacks never reach this handler.
+ * The Stripe adapter needs `charge.dispute.*` for the same reason.
  */
 export async function POST(req: Request) {
   // A real provider must never be allowed to finalize against the in-memory
@@ -160,6 +160,40 @@ export async function POST(req: Request) {
       return Response.json({ error: "store_failed", retryable: true }, { status: 500 });
     }
     return Response.json({ received: true, disputed: true, eventType: event.type });
+  }
+
+  // Refund requests can settle asynchronously after the original payment
+  // webhook has been acknowledged. Reconcile these events independently of
+  // the claim token used by the initiating request; this is what turns a
+  // pending/review refund into a durable succeeded state without issuing a
+  // second refund.
+  if (event.status === "refunded") {
+    try {
+      await reconcileRefundProviderEvent({
+        provider: provider.name,
+        paymentId: event.paymentId,
+        eventId: event.id,
+        status: event.type === "refund.succeeded" ? "succeeded" : "manual_review",
+        amountCents: event.amountCents,
+        error: event.type === "refund.failed" ? "provider_refund_failed" : undefined,
+      });
+      await markPaymentEventStatus(provider.name, event.id, "ignored", event.type);
+    } catch (e) {
+      logEvent("refund_event_reconcile_failed", "error", {
+        provider: provider.name,
+        event_id: event.id,
+        payment_id: event.paymentId,
+        event_type: event.type,
+        detail: e instanceof Error ? e.message : String(e),
+      });
+      return Response.json({ error: "refund_event_reconcile_failed", retryable: true }, { status: 500 });
+    }
+    logEvent(event.type === "refund.succeeded" ? "refund_provider_succeeded" : "refund_provider_failed", event.type === "refund.succeeded" ? "info" : "error", {
+      provider: provider.name,
+      event_id: event.id,
+      payment_id: event.paymentId,
+    });
+    return Response.json({ received: true, refund: event.type });
   }
 
   if (event.status === "succeeded") {
