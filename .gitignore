@@ -5,6 +5,7 @@ out/
 .env.*
 !.env.example
 .vercel/
+supabase/.temp/
 .DS_Store
 *.log
 .freebuff/
