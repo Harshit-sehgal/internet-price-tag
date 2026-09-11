@@ -101,6 +101,7 @@ stale payment. **No unexplained payment states are permitted.**
 - Keep at least 7 days of PITR window in production (verify via the dashboard after the first production sale).
 - **What is authoritative:** `sales` rows are the immutable ledger. `domains` can be rebuilt from sales; never rewrite sales to fix a bad state — append or operator-correct via `db/ops.sql` audit + reserved-domain/suspension actions.
 - **Restore procedure:** use Supabase's PITR restore to the last known-good timestamp, then verify `domains` vs `sales` consistency and that `finalize_takeover` still satisfies the in-memory race tests (`npm run test:concurrency`). Re-verify the webhook signing secret and `SUPABASE_SERVICE_ROLE_KEY` are unchanged after restore.
+- **Free-beta logical backup verification:** on 2026-09-11, the hosted public schema and data were dumped with the authenticated Supabase CLI and restored into an isolated PostgreSQL 17 container. The restore completed with 3 domains, 3 sales, 2 profiles, 97 analytics events, and 5 payment events. This is **Staging verified** evidence for the logical recovery procedure; it is not managed backup/PITR coverage. The Free Plan does not provide managed project backups, so keep PITR disabled during the free beta.
 
 ## 8. Monitoring (item 9)
 

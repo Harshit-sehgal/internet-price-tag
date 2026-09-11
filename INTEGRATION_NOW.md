@@ -33,7 +33,7 @@ This file is the current authority for the next execution phase and overrides ol
 - The authenticated beta user selected and saved the permanent public handle `@harshit`. The hosted domain, profile, receipt, share URL, and owner-only analytics page render successfully; real hosted analytics now show tag views, profile views, and share visits.
 - The hosted staging smoke passes all 9 checks, and `/api/health` plus `/api/health?check=db` are healthy. Production handle-rate-limit and same-domain quote bursts from the signed-in `@harshit` session returned `429 rate_limited` without 5xx responses; the complete checkout/user/IP/domain rate-limit matrix is still outstanding. A free GitHub Actions workflow now checks both hosted health endpoints every 15 minutes; Vercel Hobby log-drain/alert controls remain unavailable.
 - A separate hosted observer session received the live Realtime market update after the post-fix takeover: it changed to `CURRENT HOLDER @harshit`, showed the permanent history entry, and displayed the `$10` next takeover price without a reload. This is **Staging verified** for the live two-session Realtime path.
-- The Supabase Database → Backups page confirms that the current Free Plan does not include project backups. The required pre-money logical dump/restore test therefore remains **Owner blocked** by the missing authenticated database CLI/service-role access; PITR is intentionally not enabled for this free beta.
+- The Supabase Database → Backups page confirms that the current Free Plan does not include managed project backups. A real hosted logical schema-and-data dump, followed by restore into an isolated PostgreSQL 17 container, is **Staging verified** using the authenticated Supabase CLI on 2026-09-11. The restored fixture contained 3 domains, 3 sales, 2 profiles, 97 analytics events, and 5 payment events. This verifies the free-tier recovery procedure; managed backups/PITR remain unavailable and PITR is intentionally not enabled for this free beta.
 - Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
 
 ## Do not redo
@@ -84,7 +84,7 @@ Do not create paid infrastructure without explicit owner approval.
 
 Start after Tracks A-C have usable hosted resources.
 
-1. Run hosted Postgres/RPC tests against the real Priced Supabase project; this is currently **Owner blocked** by the missing authenticated database CLI/service-role access.
+1. Run hosted Postgres/RPC tests against the real Priced Supabase project; this remains **Owner blocked** because Vercel protects the production `SUPABASE_SERVICE_ROLE_KEY` and its CLI environment runner redacts it, so the real service-role RPC test cannot be executed safely from this workspace. The separate hosted logical backup dump/restore is **Staging verified**.
 2. Run 10 and 25 simultaneous challenger races against the hosted environment. Exactly one takeover may finalize for one version; this remains unrun.
 3. Run `npm run smoke:staging` against the stable beta deployment. **Staging verified** (9 checks pass).
 4. Verify Realtime across two sessions, including a live market update. **Staging verified** on `realtime-success-us-20260911.com`; the observer updated to `@harshit`, history, and the `$10` next price without reload.
