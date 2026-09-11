@@ -1,7 +1,8 @@
 -- Migration 20260912_000003 — payment dispute / chargeback ledger
 --
 -- Before this table, Priced had no dispute state at all: the Dodo endpoint was
--- filtered to payment.succeeded / payment.failed / payment.cancelled, so a
+-- filtered to payment.succeeded / payment.failed / payment.cancelled and
+-- refund events, so a
 -- buyer could win a tag, charge back the payment, and keep both the tag and the
 -- money with nothing recorded anywhere.
 --
@@ -11,7 +12,8 @@
 -- irreversible money/provenance action taken without authorization.
 --
 -- DEPLOY: this table is inert until the Dodo webhook endpoint is re-filtered to
--- include the `dispute.*` events (dispute.opened, dispute.challenged,
+-- include `refund.succeeded`, `refund.failed`, and the `dispute.*` events
+-- (dispute.opened, dispute.challenged,
 -- dispute.accepted, dispute.cancelled, dispute.expired, dispute.won,
 -- dispute.lost). Stripe, if used as the optional adapter, needs the
 -- `charge.dispute.*` events subscribed for the same reason.

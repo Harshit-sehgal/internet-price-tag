@@ -36,7 +36,7 @@ because they need accounts, credentials and a legal review.
    - `DODO_PAYMENTS_MODE=test` (preview) / `live` (production)
    - Webhook secret: add an endpoint `https://<your-domain>/api/webhooks/payments`
      subscribed to `payment.succeeded`, `payment.failed`, `payment.cancelled`,
-     and the Dodo `dispute.*` lifecycle events (`opened`, `challenged`,
+     `refund.succeeded`, `refund.failed`, and the Dodo `dispute.*` lifecycle events (`opened`, `challenged`,
      `accepted`, `cancelled`, `expired`, `won`, `lost`), then copy
      `DODO_PAYMENTS_WEBHOOK_KEY`.
 4. Use test credentials first; run the §76 sandbox gate (below) before switching live.

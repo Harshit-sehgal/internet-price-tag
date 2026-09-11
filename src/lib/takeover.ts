@@ -157,7 +157,18 @@ export async function processSucceededPayment(args: {
     );
   }
 
-  if (args.paidCents != null && args.paidCents !== quote.nextPriceCents) {
+  if (args.paidCents == null) {
+    // A succeeded payment that asserts no amount is not payable: without the
+    // amount comparison there is no proof the buyer paid the quoted price.
+    // Fail closed into the mismatch branch (refund, terminal) rather than
+    // defaulting to the quote price and minting a sale on an unverified sum.
+    logEvent("payment_amount_missing", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, expected_cents: quote.nextPriceCents });
+    return failedAfterRefund(
+      "amount_mismatch",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "amount_mismatch"),
+    );
+  }
+  if (args.paidCents !== quote.nextPriceCents) {
     // Never apply a payment toward a different price (§50).
     logEvent("payment_amount_mismatch", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, paid_cents: args.paidCents, expected_cents: quote.nextPriceCents });
     return failedAfterRefund(
@@ -171,7 +182,7 @@ export async function processSucceededPayment(args: {
     buyerUserId: quote.buyerUserId,
     buyerHandle: profile.handle,
     expectedVersion: quote.expectedVersion,
-    paidCents: args.paidCents ?? quote.nextPriceCents,
+    paidCents: args.paidCents,
     providerPaymentId: args.paymentId,
   });
 
@@ -273,7 +284,11 @@ async function refundPaymentWithLedger(
     const providerImpl = getPaymentProvider();
     const res = await providerImpl.refundPayment(paymentId, reason);
     if (!res.ok) {
-      const terminal = claim.attempts >= MAX_REFUND_ATTEMPTS;
+      // Dodo can accept a refund request while it is still pending/review.
+      // Do not issue another refund while the first one may still settle;
+      // the provider's refund webhook will reconcile the durable ledger.
+      const providerPending = res.status === "pending" || res.status === "review";
+      const terminal = providerPending || claim.attempts >= MAX_REFUND_ATTEMPTS;
       const completed = await completeRefundAttempt({
         provider,
         paymentId,
@@ -281,7 +296,7 @@ async function refundPaymentWithLedger(
         status: terminal ? "manual_review" : "failed",
         error: res.error,
       });
-      logEvent(terminal ? "refund_manual_review" : "refund_failed", "error", {
+      logEvent(providerPending ? "refund_pending" : terminal ? "refund_manual_review" : "refund_failed", "error", {
         provider,
         payment_id: paymentId,
         quote_id: quote?.id ?? null,

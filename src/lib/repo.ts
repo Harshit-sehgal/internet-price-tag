@@ -994,6 +994,102 @@ export async function completeRefundAttempt(args: {
   return true;
 }
 
+/**
+ * Reconcile a provider-emitted refund status. A refund may be accepted as
+ * pending/review by the provider and settle later, so this path is allowed to
+ * complete a manual-review row without a live claim token. A later failure
+ * event must never downgrade a refund already confirmed as succeeded.
+ */
+export async function reconcileRefundProviderEvent(args: {
+  provider: string;
+  paymentId: string;
+  eventId: string;
+  status: Extract<RepoRefundStatus, "succeeded" | "manual_review">;
+  amountCents?: number | null;
+  error?: string;
+}): Promise<void> {
+  const now = new Date().toISOString();
+  const key = `${args.provider}:${args.paymentId}`;
+
+  if (isProdDatastore) {
+    const { data: existing, error: readError } = await client()
+      .from("refunds")
+      .select("status")
+      .eq("provider", args.provider)
+      .eq("provider_payment_id", args.paymentId)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (existing?.status === "succeeded") return;
+
+    if (existing) {
+      const { error } = await client()
+        .from("refunds")
+        .update({
+          status: args.status,
+          claim_token: null,
+          lease_expires_at: null,
+          last_error: args.error ?? null,
+          updated_at: now,
+          completed_at: now,
+          ...(args.amountCents == null ? {} : { amount_cents: args.amountCents }),
+        })
+        .eq("provider", args.provider)
+        .eq("provider_payment_id", args.paymentId);
+      if (error) throw error;
+      return;
+    }
+
+    // A provider event can arrive after a transient database failure created
+    // the refund remotely but before our ledger insert completed. Preserve the
+    // provider event as the durable source of truth; a concurrent insert race
+    // is retried by the provider on the next delivery.
+    const { error } = await client().from("refunds").insert({
+      provider: args.provider,
+      provider_payment_id: args.paymentId,
+      provider_event_id: args.eventId,
+      reason: "provider_refund_event",
+      amount_cents: args.amountCents ?? null,
+      status: args.status,
+      attempts: 0,
+      last_error: args.error ?? null,
+      updated_at: now,
+      completed_at: now,
+    });
+    if (error) throw error;
+    return;
+  }
+
+  const existing = mem().refunds.get(key);
+  if (existing?.status === "succeeded") return;
+  if (existing) {
+    existing.status = args.status;
+    existing.providerEventId = args.eventId;
+    if (args.amountCents != null) existing.amountCents = args.amountCents;
+    existing.claimToken = null;
+    existing.leaseExpiresAt = null;
+    existing.lastError = args.error ?? null;
+    existing.updatedAt = now;
+    existing.completedAt = now;
+    return;
+  }
+
+  mem().refunds.set(key, {
+    provider: args.provider,
+    providerPaymentId: args.paymentId,
+    providerEventId: args.eventId,
+    reason: "provider_refund_event",
+    amountCents: args.amountCents ?? null,
+    status: args.status,
+    attempts: 0,
+    claimToken: null,
+    leaseExpiresAt: null,
+    lastError: args.error ?? null,
+    createdAt: now,
+    updatedAt: now,
+    completedAt: now,
+  });
+}
+
 export async function isReservedInDb(domain: string): Promise<boolean> {
   if (!isProdDatastore) return false;
   try {
