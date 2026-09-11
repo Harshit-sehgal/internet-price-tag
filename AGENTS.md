@@ -137,7 +137,7 @@ The GitHub Vercel deployment target has referenced workspace slug:
 
 The ChatGPT Vercel connector may receive `403 Forbidden` when querying that project/workspace directly. The authenticated Vercel CLI can inspect and manage the project.
 
-Git integration remains connected to `Harshit-sehgal/priced`; the production deployment aliases include the `git-main` deployment. No privileged environment variables have been configured yet; the designated beta environment must receive them only after the owner supplies or creates the provider credentials.
+Git integration remains connected to `Harshit-sehgal/priced`; the production deployment aliases include the `git-main` deployment. The designated beta Production environment now has the Supabase public URL/key, server-only Supabase service-role key, Dodo Test Mode credentials, Upstash REST credentials, and `NEXT_PUBLIC_APP_URL` configured. Ordinary Preview deployments remain demo-only and do not receive those privileged credentials. The service-role key is never exposed in browser code or `NEXT_PUBLIC_*` variables.
 
 For sandbox and closed beta, first establish one stable Vercel beta/staging origin. A purchased custom domain is not required for integration testing.
 

@@ -197,3 +197,52 @@ test("unknown quote payment ends in a deterministic refunded state", async () =>
   assert.equal(result.reason, "unknown_quote");
   assert.equal(result.refunded, true);
 });
+
+test("missing quote metadata stays retryable when the provider refund fails", async () => {
+  const previous = {
+    apiKey: process.env.DODO_PAYMENTS_API_KEY,
+    mode: process.env.DODO_PAYMENTS_MODE,
+    productId: process.env.DODO_PAYMENTS_PRODUCT_ID,
+    webhookKey: process.env.DODO_PAYMENTS_WEBHOOK_KEY,
+    stripeKey: process.env.STRIPE_SECRET_KEY,
+  };
+  const realFetch = globalThis.fetch;
+  try {
+    process.env.DODO_PAYMENTS_API_KEY = "test-key";
+    process.env.DODO_PAYMENTS_MODE = "test";
+    process.env.DODO_PAYMENTS_PRODUCT_ID = "pdt_test_123";
+    process.env.DODO_PAYMENTS_WEBHOOK_KEY = "test-webhook-secret";
+    delete process.env.STRIPE_SECRET_KEY;
+    globalThis.fetch = (async () => ({
+      ok: false,
+      status: 503,
+      text: async () => "provider unavailable",
+    })) as unknown as typeof fetch;
+
+    const result = await processSucceededPayment({
+      provider: "dodo",
+      eventId: "evt-missing-metadata-refund-failure",
+      paymentId: "pay-missing-metadata-refund-failure",
+      quoteId: null,
+      paidCents: 400,
+    });
+
+    assert.deepEqual(result, {
+      outcome: "failed",
+      refunded: false,
+      reason: "missing_quote_metadata",
+    });
+  } finally {
+    globalThis.fetch = realFetch;
+    if (previous.apiKey === undefined) delete process.env.DODO_PAYMENTS_API_KEY;
+    else process.env.DODO_PAYMENTS_API_KEY = previous.apiKey;
+    if (previous.mode === undefined) delete process.env.DODO_PAYMENTS_MODE;
+    else process.env.DODO_PAYMENTS_MODE = previous.mode;
+    if (previous.productId === undefined) delete process.env.DODO_PAYMENTS_PRODUCT_ID;
+    else process.env.DODO_PAYMENTS_PRODUCT_ID = previous.productId;
+    if (previous.webhookKey === undefined) delete process.env.DODO_PAYMENTS_WEBHOOK_KEY;
+    else process.env.DODO_PAYMENTS_WEBHOOK_KEY = previous.webhookKey;
+    if (previous.stripeKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = previous.stripeKey;
+  }
+});
