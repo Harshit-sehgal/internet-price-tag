@@ -83,13 +83,16 @@ stale payment. **No unexplained payment states are permitted.**
 The repository command `npm run test:postgres` targets the real-project
 integration harness at `tests/integration/postgres.finalize.test.ts`; it is
 gated by `RUN_POSTGRES_TESTS=1` and the server-only Supabase service-role key.
+On 2026-09-11, the harness ran against the real Priced project with the
+protected key held only in process memory and all 8 tests passed. The key was
+not printed or written to the repository.
 As an additional hosted database check, on 2026-09-11 an authenticated
 Supabase CLI login and bounded PostgreSQL pool ran 10 first-claim requests and
 25 held-domain takeover requests concurrently. Each race produced exactly one
 `OK` and the remaining `STALE_QUOTE` results, with the expected final version,
 price, and one sale per version. The disposable test rows were removed. This
-proves database-level hosted locking; it does not replace the REST/service-role
-harness or the end-to-end HTTP/payment race.
+proves database-level hosted locking; the REST/service-role harness is also
+verified, while the end-to-end HTTP/payment race remains outstanding.
 
 ## 5. Content + safety pass
 
