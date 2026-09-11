@@ -3,7 +3,7 @@ import Link from "next/link";
 import { money } from "@/lib/game.ts";
 import { getProfileByHandle, listSalesForBuyer, listMarket } from "@/lib/repo";
 import { isHandleValid } from "@/lib/domains.ts";
-import { persistAnalyticsEvent } from "@/lib/analytics-server";
+import { persistViewEvent } from "@/lib/view-events";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { HolderCta, HolderCtaInline } from "@/components/HolderCta";
 import { ProfileEditor } from "@/components/ProfileEditor";
@@ -60,7 +60,10 @@ export default async function HolderPage({ params }: Params) {
     listMarket(1000),
   ]);
   // Holder analytics input: profile render counts a view (best-effort).
-  await persistAnalyticsEvent({ event: "profile_viewed", handle: h });
+  // Guarded by persistViewEvent — bots are skipped and one (IP, handle) pair
+  // counts once per dedup window, so a refresh/curl loop cannot forge numbers.
+  // A skipped view still renders the page normally.
+  await persistViewEvent({ event: "profile_viewed", resource: `u:${h}`, handle: h });
 
   const held = market.filter((row) => row.holderHandle === h);
   const heldDomains = new Set(held.map((t) => t.domain));

@@ -48,23 +48,28 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: 1
 
-      - name: Migrations determinism — fresh DB boots from supabase/migrations/
+      # Real money-path verification against REAL Postgres row locks, not the
+      # in-memory adapter. Boots throwaway postgres:16-alpine containers and
+      # applies every migration in filename order, so this also proves the
+      # "fresh DB boots from supabase/migrations/" claim by construction.
+      # Covers: concurrency races, IDEMPOTENCY_CONFLICT, the finalize_takeover
+      # idempotency re-check under lock, and SQL<->TypeScript pricing parity.
+      - name: Real-Postgres money path + pricing parity
+        run: npm run test:pg
+
+      # The two SQL sources must genuinely agree. This previously checked only
+      # that files existed and grepped for two strings, which cannot see drift
+      # inside a function BODY — and real drift had accumulated behind it:
+      # analytics_events was never mirrored into db/, so the operator bootstrap
+      # documented in DEPLOY.md could not apply to a fresh database at all.
+      # This boots two databases, applies one source to each, and diffs
+      # columns, constraints, indexes and every function definition.
+      - name: Schema equivalence — db/*.sql matches supabase/migrations/
         run: |
           set -euo pipefail
-          test -f supabase/migrations/20260908000001_market_core.sql
-          test -f supabase/migrations/20260908000002_identity_quotes_observability.sql
-          test -f supabase/migrations/20260909000001_analytics_events.sql
-          test -f supabase/migrations/20260910000001_priced_profiles.sql
-          test -f supabase/migrations/20260910000002_credit_ledger.sql
-          test -f supabase/migrations/20260910000003_holder_analytics_rpc.sql
           test -f supabase/config.toml
           test -f supabase/migrations/README.md
-          # Portable files must stay equivalent to the migration history.
-          test -f db/schema.sql
-          test -f db/schema-extended.sql
-          grep -q "holder_analytics" db/schema-extended.sql
-          grep -q "credit_ledger" db/schema-extended.sql
-          echo "migrations structure checks passed"
+          npm run test:schema
 
       - name: Analytics + health smoke (no DB — verifies HTTP contract and taxonomy)
         run: |

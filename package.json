@@ -14,6 +14,7 @@
     "test:postgres": "node --experimental-strip-types --test tests/integration/postgres.finalize.test.ts",
     "test:browser": "playwright test",
     "test:race": "node tests/load/race.mjs http://127.0.0.1:3111 12",
+    "test:schema": "node scripts/schema-equivalence.mjs",
     "smoke:staging": "node scripts/staging-smoke.mjs",
     "typecheck": "tsc --noEmit"
   },

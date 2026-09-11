@@ -6,7 +6,7 @@ import { TakeoverCTA } from "@/components/TakeoverCTA";
 import { HistoryLedger } from "@/components/HistoryLedger";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { HolderCta } from "@/components/HolderCta";
-import { persistAnalyticsEvent } from "@/lib/analytics-server";
+import { persistViewEvent } from "@/lib/view-events";
 
 export const dynamic = "force-dynamic";
 
@@ -80,10 +80,13 @@ export default async function DomainPage({ params }: Params) {
   const unclaimed = !row || !row.holderUserId;
   const reserved = reason === "reserved";
   // Holder analytics input: a claimed, non-reserved tag render counts as a
-  // tag view (best-effort, never blocks render).
+  // tag view (best-effort, never blocks render). persistViewEvent drops bot
+  // traffic and collapses repeat (IP, domain) renders — including every
+  // LiveRefresh-driven re-render — into one row per dedup window.
   if (!unclaimed && !reserved) {
-    await persistAnalyticsEvent({
+    await persistViewEvent({
       event: "tag_viewed",
+      resource: `domain:${canonical}`,
       domain: canonical,
       handle: row?.holderHandle ?? null,
     });

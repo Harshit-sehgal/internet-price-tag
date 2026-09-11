@@ -56,16 +56,19 @@ async function runMigrations(client) {
   await client.query("create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$");
   await client.query("create publication supabase_realtime");
 
-  for (const file of [
-    "20260908000001_market_core.sql",
-    "20260908000002_identity_quotes_observability.sql",
-    "20260909000001_analytics_events.sql",
-    "20260910000001_priced_profiles.sql",
-    "20260910000002_credit_ledger.sql",
-    "20260910000003_holder_analytics_rpc.sql",
-    "20260911000001_refund_ledger.sql",
-  ]) {
-    const sql = await readFile(new URL(`../../supabase/migrations/${file}`, import.meta.url), "utf8");
+  // Apply EVERY migration in filename order rather than a hardcoded list.
+  // A hardcoded list silently rots: it had already drifted past
+  // 20260910000004_hosted_supabase_hardening.sql, so this harness was
+  // certifying an OUTDATED finalize_takeover — exactly the function these
+  // tests exist to prove. Globbing means a new migration is covered the
+  // moment it lands, which is the only way "fresh DB boots from
+  // supabase/migrations/" stays true.
+  const { readdir } = await import("node:fs/promises");
+  const dir = new URL("../../supabase/migrations/", import.meta.url);
+  const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
+  if (files.length === 0) throw new Error("no migrations found");
+  for (const file of files) {
+    const sql = await readFile(new URL(file, dir), "utf8");
     await client.query(sql);
   }
 }
@@ -361,4 +364,64 @@ test("holder_analytics RPC aggregates real counts SQL-side", { skip: !hasDocker 
   assert.equal(byDomain["other.com"].unique_sessions, 1);
   assert.ok(Array.isArray(a.daily) && a.daily.length >= 1);
   assert.ok(a.daily.every((d) => typeof d.day === "string" && typeof d.views === "number"));
+});
+
+// Regression for the finalize_takeover idempotency race (migration
+// 20260912000001). The sales idempotency lookup used to run BEFORE
+// `select ... for update` and was never repeated after the lock was held.
+// Under READ COMMITTED a second delivery reads `sales` while the winner is
+// still uncommitted (finds nothing), parks on the row lock, then wakes to a
+// NEW version and raised STALE_QUOTE — for a payment that had already
+// finalized. src/lib/takeover.ts REFUNDS on STALE_QUOTE, so the buyer kept
+// the tag AND got their money back.
+//
+// Concurrency alone does not reproduce it: the two statements usually do not
+// interleave inside the window. The interleaving is therefore forced here by
+// holding the winner's transaction open while the loser blocks on the lock.
+//
+// Reachable in production whenever two DISTINCT webhook event ids for ONE
+// payment arrive together — routine on Stripe, where checkout.session.completed
+// and payment_intent.succeeded both map to "succeeded" for the same
+// payment_intent.
+test("concurrent duplicate delivery returns the existing sale, never STALE_QUOTE", { skip: !hasDocker }, async () => {
+  const userId = await seedProfile("rpc-dupe");
+  const domain = "rpc-dupe-race.com";
+  const paymentId = "pi-rpc-dupe-race";
+  const call = (c) =>
+    c.query("select * from public.finalize_takeover($1,$2,$3,$4,$5,$6)", [
+      domain, userId, "rpc-dupe", 0, 500, paymentId,
+    ]);
+
+  const winner = await client.connect();
+  const loser = await client.connect();
+  try {
+    await winner.query("begin");
+    const first = await call(winner);
+    const saleId = first.rows[0].id;
+
+    // Second delivery starts while the winner is still uncommitted, so its
+    // own sales lookup sees nothing and it parks on the domains row lock.
+    await loser.query("begin");
+    const pending = call(loser).then(
+      (r) => ({ ok: true, sale: r.rows[0] }),
+      (e) => ({ ok: false, code: String(e.message).split(" ")[0] }),
+    );
+    await new Promise((r) => setTimeout(r, 400)); // let it reach the lock
+    await winner.query("commit");
+
+    const second = await pending;
+    await loser.query("commit").catch(() => {});
+
+    assert.ok(second.ok, `duplicate delivery must not fail (got ${second.code})`);
+    assert.equal(second.sale.id, saleId, "must return the SAME sale, not a refundable error");
+
+    const count = await client.query(
+      "select count(*)::int as n from public.sales where provider_payment_id = $1",
+      [paymentId],
+    );
+    assert.equal(count.rows[0].n, 1, "exactly one sale for one payment");
+  } finally {
+    winner.release();
+    loser.release();
+  }
 });

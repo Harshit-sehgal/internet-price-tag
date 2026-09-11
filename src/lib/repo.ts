@@ -88,6 +88,9 @@ type MemState = {
   domains: Map<string, RepoDomain>;
   sales: RepoSale[];
   quotes: Map<string, RepoQuote>;
+  // Keyed by profile id, mirroring the SQL primary key. Keying by handle would
+  // let a second user's upsert overwrite the row that holds the handle, which
+  // the unique index on profiles.handle rejects in production.
   profiles: Map<string, RepoProfile>;
   paymentEvents: Map<string, { id: string; provider: string; providerEventId: string; providerPaymentId: string; eventType: string; status: string; createdAt: string }>;
   refunds: Map<string, MemRefund>;
@@ -436,7 +439,11 @@ export async function getSale(saleId: string): Promise<RepoSale | null> {
 
 export async function getProfileByHandle(handle: string): Promise<RepoProfile | null> {
   const h = handle.toLowerCase().replace(/^@/, "");
-  if (!isProdDatastore) return mem().profiles.get(h) ?? null;
+  if (!isProdDatastore) {
+    // Profiles are keyed by id; handle lookup scans (the memory store is small).
+    for (const p of mem().profiles.values()) if (p.handle === h) return p;
+    return null;
+  }
   const { data, error } = await client().from("profiles").select("*").eq("handle", h).maybeSingle();
   if (error) throw error;
   return data
@@ -445,10 +452,7 @@ export async function getProfileByHandle(handle: string): Promise<RepoProfile | 
 }
 
 export async function getProfileById(id: string): Promise<RepoProfile | null> {
-  if (!isProdDatastore) {
-    for (const p of mem().profiles.values()) if (p.id === id) return p;
-    return null;
-  }
+  if (!isProdDatastore) return mem().profiles.get(id) ?? null;
   const { data, error } = await client().from("profiles").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
   return data
@@ -660,6 +664,9 @@ export async function finalizeTakeover(input: FinalizeInput): Promise<TakeoverOu
   if (d.version !== input.expectedVersion) return { ok: false, code: "STALE_QUOTE" };
   if (d.holderUserId && d.holderUserId === input.buyerUserId) return { ok: false, code: "ALREADY_HOLDER" };
 
+  // The locked formula lives in one TS place (game.ts quoteFor). Re-deriving it
+  // here with literals is how the memory adapter and the SQL finalizer drift;
+  // tests/pg/pricing-parity.test.ts pins quoteFor against the SQL RPC.
   const required = quoteFor({
     domain: d.domain,
     holder: d.holderHandle,
@@ -698,15 +705,27 @@ export async function finalizeTakeover(input: FinalizeInput): Promise<TakeoverOu
 export async function upsertProfile(id: string, handle: string, displayName: string | null, avatarUrl: string | null): Promise<RepoProfile> {
   const h = handle.toLowerCase();
   if (!isProdDatastore) {
-    const existing = mem().profiles.get(h);
+    const m = mem();
+    // SQL upserts on the id and lets the unique index on profiles.handle reject
+    // a hijack; both halves are mirrored here. Without the uniqueness throw, a
+    // second user claiming a taken handle would silently overwrite the holder,
+    // and claimHandle would return success instead of HANDLE_TAKEN.
+    for (const p of m.profiles.values()) {
+      if (p.handle === h && p.id !== id) {
+        throw new Error('duplicate key value violates unique constraint "profiles_handle_key"');
+      }
+    }
+    const existing = m.profiles.get(id);
     const profile: RepoProfile = {
       id, handle: h, displayName, avatarUrl,
       bio: existing?.bio ?? null,
       ctaLabel: existing?.ctaLabel ?? null,
       ctaUrl: existing?.ctaUrl ?? null,
-      suspendedAt: null,
+      // Suspension is moderation state the SQL upsert never writes; a profile
+      // upsert must not lift an existing suspension.
+      suspendedAt: existing?.suspendedAt ?? null,
     };
-    mem().profiles.set(h, profile);
+    m.profiles.set(id, profile);
     return profile;
   }
   const { data, error } = await client()
@@ -731,14 +750,11 @@ export async function updateProfileExtras(args: {
 }): Promise<RepoProfile | null> {
   if (!isProdDatastore) {
     const m = mem();
-    for (const [h, p] of m.profiles) {
-      if (p.id === args.id) {
-        const updated: RepoProfile = { ...p, bio: args.bio, ctaLabel: args.ctaLabel, ctaUrl: args.ctaUrl };
-        m.profiles.set(h, updated);
-        return updated;
-      }
-    }
-    return null;
+    const p = m.profiles.get(args.id);
+    if (!p) return null;
+    const updated: RepoProfile = { ...p, bio: args.bio, ctaLabel: args.ctaLabel, ctaUrl: args.ctaUrl };
+    m.profiles.set(args.id, updated);
+    return updated;
   }
   const { data, error } = await client()
     .from("profiles")
@@ -1030,8 +1046,8 @@ export function seedDemoMarket(items: Array<{ domain: string; holderHandle: stri
       updatedAt: now,
     });
     m.sales.push(sale);
-    if (!m.profiles.has(handle)) {
-      m.profiles.set(handle, { id: userId, handle, displayName: null, avatarUrl: null, bio: null, ctaLabel: null, ctaUrl: null, suspendedAt: null });
+    if (!m.profiles.has(userId)) {
+      m.profiles.set(userId, { id: userId, handle, displayName: null, avatarUrl: null, bio: null, ctaLabel: null, ctaUrl: null, suspendedAt: null });
     }
   }
 }

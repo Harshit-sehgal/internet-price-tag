@@ -40,3 +40,36 @@ test("sanitized output cannot change origin when resolved", () => {
     assert.equal(new URL(safe, origin).origin, origin, value);
   }
 });
+
+// Regression: dot-segment traversal that NORMALISES into a protocol-relative
+// path. These start with a single "/" and resolve to the sentinel origin, so
+// an input-only check accepts them — but their pathname collapses to
+// "//evil.example", which becomes https://evil.example once the caller
+// resolves it against the real origin. This is the open-redirect that turned
+// a genuine /auth/callback login into an attacker-controlled landing page.
+test("traversal that normalises into a protocol-relative path is rejected", () => {
+  const origin = "https://priced.example";
+  for (const value of [
+    "/..//evil.example",
+    "/..//evil.example/login",
+    "/../..///evil.example/x",
+    "/./..//evil.example",
+    "/a/b/../../..//evil.example",
+  ]) {
+    const safe = sanitizeInternalPath(value);
+    assert.ok(!safe.startsWith("//"), `${value} -> ${safe} is protocol-relative`);
+    assert.equal(new URL(safe, origin).origin, origin, value);
+  }
+});
+
+test("legitimate internal paths survive sanitisation unchanged", () => {
+  for (const value of [
+    "/",
+    "/domain/openai.com",
+    "/u/harshit/analytics",
+    "/takeover/abc?via=share#pay",
+    "/success/1?via=share",
+  ]) {
+    assert.equal(sanitizeInternalPath(value), value);
+  }
+});

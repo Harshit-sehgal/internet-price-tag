@@ -142,10 +142,18 @@ export const BANNED_HANDLES = [
   "official",
   "support",
   "help",
+  "helpdesk",
   "security",
   "root",
   "system",
   "owner",
+  "billing",
+  "payments",
+  "payment",
+  "refund",
+  "refunds",
+  "verify",
+  "verified",
   "internetpricetag",
   "price_tag",
   "pricetag",
@@ -153,7 +161,42 @@ export const BANNED_HANDLES = [
   "ipt",
 ] as const;
 
+/**
+ * Brand terms. Any handle CONTAINING one of these is refused, because the
+ * impersonation that actually hurts users is not the bare word "support" (we
+ * already ban that) — it is "priced_support", "pricedteam" or "pricedhelp"
+ * messaging a holder about their payment. Handles are PERMANENT here, so a
+ * bad one cannot be cleaned up later; refuse at claim time.
+ */
+const BRAND_TERMS = ["priced", "pricetag", "internetpricetag"] as const;
+
+/**
+ * Fold the tricks used to slip past an exact-match ban list: separators and
+ * leetspeak. "supp0rt", "adm1n", "r00t", "0fficial" and "s_t_a_f_f" all
+ * normalise onto the banned word they are imitating.
+ */
+function foldHandleForBanCheck(handle: string): string {
+  return handle
+    .toLowerCase()
+    .replace(/[_-]/g, "")
+    .replace(/0/g, "o")
+    .replace(/1/g, "i")
+    .replace(/3/g, "e")
+    .replace(/4/g, "a")
+    .replace(/5/g, "s")
+    .replace(/7/g, "t")
+    .replace(/8/g, "b")
+    .replace(/\$/g, "s");
+}
+
 export function isHandleAllowed(handle: string): boolean {
   const h = handle.toLowerCase();
-  return isHandleValid(h) && !(BANNED_HANDLES as readonly string[]).includes(h);
+  if (!isHandleValid(h)) return false;
+  // Exact ban on the literal handle, and on its de-leeted/de-separated form.
+  const folded = foldHandleForBanCheck(h);
+  const banned = BANNED_HANDLES as readonly string[];
+  if (banned.includes(h) || banned.includes(folded)) return false;
+  // Brand impersonation: substring, not exact match. See BRAND_TERMS.
+  if (BRAND_TERMS.some((term) => folded.includes(term))) return false;
+  return true;
 }
