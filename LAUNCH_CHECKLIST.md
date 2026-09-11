@@ -40,19 +40,19 @@ Nothing is marked beyond the level actually evidenced.
 |---|---|---|
 | Dodo provider: PWYW checkout, Standard-Webhooks verify, refunds | Implemented; CI-verified logic | `tests/integration/dodo.test.ts` (network stubbed) |
 | Dodo permission check for symbolic-status product | Implemented | Owner confirmed Dodo product verification/approval; do not reopen unless Dodo requests it |
-| Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Staging verified (partial); Owner blocked for remaining cases | Real Test Mode success, declined payment, signed webhook acceptance, quote consumption, and atomic finalization are verified on the stable beta origin. Duplicate/cancelled/stale/refund/race/error cases still require the full hosted exercise. Procedure: `DEPLOY.md` §4. |
+| Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Staging verified (partial); Owner blocked for remaining cases | Real Test Mode success, declined payment, signed webhook acceptance, quote consumption, atomic finalization, Dodo tax-inclusive amount handling, and hosted stale/wrong-amount refunds are verified on the stable beta origin. Duplicate/cancelled/idempotency/retry/race/refund-failure/error cases still require the full hosted exercise. Procedure: `DEPLOY.md` §4. |
 | Live Dodo configuration | Owner blocked | DEPLOY.md §6 |
 
 ## Infrastructure
 
 | Item | Status | Evidence |
 |---|---|---|
-| Supabase project + migrations + auth + Realtime + backups | Staging verified (auth/health); Owner blocked for backup verification | Existing Priced project and hosted-hardening migrations are the source of truth; Site URL and `/auth/callback` are configured, Google login reaches the welcome flow, `@harshit` is saved, and `/api/health?check=db` is healthy. A pre-money logical backup test remains blocked by authenticated database access; live Realtime event verification remains outstanding. See `INTEGRATION_NOW.md`. |
+| Supabase project + migrations + auth + Realtime + backups | Staging verified (auth/health/Realtime); Owner blocked for backup verification | Existing Priced project and hosted-hardening migrations are the source of truth; Site URL and `/auth/callback` are configured, Google login reaches the welcome flow, `@harshit` is saved, and `/api/health?check=db` is healthy. A live two-session Realtime market update is verified; a pre-money logical backup test remains blocked by authenticated database access. See `INTEGRATION_NOW.md`. |
 | Real-Postgres RPC concurrency (10 + 25 racers) | CI verified; Owner blocked for hosted verification | `npm run test:pg` passes locally/CI; the hosted run requires authenticated database access and the 10/25 hosted challenger race remains outstanding |
 | Upstash Redis + distributed rate limits | Staging verified (partial) | Free-tier database `priced-beta-redis` is created in the new Upstash account (`us-west-1`); REST URL/token are configured only in Vercel Production and the Redis-enabled deployment is Ready. Authenticated `/api/handle` burst returned `429 rate_limited` without 5xx, and direct Redis PING/EVAL checks pass; quote/checkout/user/IP/domain matrix remains outstanding. Existing `promptpay-staging-redis` was left untouched. |
 | Vercel project rename `internet-price-tag` → `priced` | Implemented | Existing project renamed through the authenticated Vercel CLI; project id preserved and production alias remains `https://internet-price-tag.vercel.app` |
 | Env separation (Local/Preview/Production) | Implemented | Matrix in `.env.example`; Supabase and Dodo Test Mode credentials are configured only in Vercel Production, while ordinary previews remain secret-free/demo-only. |
-| Monitoring/alerts (error-event list, uptime, 5xx rate) | Implemented (docs + structured logs); wiring owner blocked | DEPLOY.md §8: exact log-drain queries + uptime endpoints; A8 wires destinations |
+| Monitoring/alerts (error-event list, uptime, 5xx rate) | Implemented (docs + structured logs); External provider blocked for Vercel Log Drains | DEPLOY.md §8: exact log-drain queries + uptime endpoints. Vercel Hobby shows `Add Drain` disabled; no paid upgrade or external monitoring service was authorized. |
 | Health endpoint (liveness + `?check=db` readiness) | CI verified | `tests/integration/health-analytics.test.ts` + CI smoke step |
 
 ## Holder value layer
@@ -97,10 +97,10 @@ Nothing is marked beyond the level actually evidenced.
 
 ## Owner gates remaining (in order — exact actions in DEPLOY.md)
 
-1. **Supabase/Auth** (§1): verify a live Realtime market update across two sessions and complete the pre-money logical backup test; Google OAuth, callback, welcome, logout/re-login, and `@harshit` handle creation are complete.
+1. **Supabase/Auth** (§1): complete the pre-money logical backup test; Google OAuth, callback, welcome, logout/re-login, `@harshit` handle creation, and the live two-session Realtime update are complete.
 2. **Upstash** (§3/A4): verify distributed quote, checkout, handle, user, IP, and domain rate limits against the Redis-enabled Production deployment. Credential wiring and the handle burst are complete; the full hosted matrix remains.
 3. **Sandbox gate** (§4/B1): complete the remaining Dodo Test Mode matrix, run `npm run test:postgres` against real Supabase, run the hosted 10/25 challenger races, and retain the passing `npm run smoke:staging` result.
-4. **Monitoring** (§8/A8): wire Log Drain alerts per the query patterns, uptime checks on `/api/health(+?check=db)`, and optional `SENTRY_DSN`.
+4. **Monitoring** (§8/A8): add an authorized external uptime check and decide how to handle log drains; Vercel Hobby currently has `Add Drain` disabled, so Log Drain wiring is **External provider blocked** without a plan change or external service.
 5. **Backup test**: create and test the documented logical backup procedure before accepting real customer money; this is currently Owner blocked by authenticated database access. Do not enable PITR during the free beta phase.
 6. **Legal review** of policy pages (D1).
 7. **Live keys** (D2): swap to live Dodo config in Production only after every sandbox gate is green and plan compliance is reviewed.
