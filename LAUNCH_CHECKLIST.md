@@ -40,7 +40,7 @@ Nothing is marked beyond the level actually evidenced.
 |---|---|---|
 | Dodo provider: PWYW checkout, Standard-Webhooks verify, refunds | Implemented; CI-verified logic | `tests/integration/dodo.test.ts` (network stubbed) |
 | Dodo permission check for symbolic-status product | Implemented | Owner confirmed Dodo product verification/approval; do not reopen unless Dodo requests it |
-| Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Staging verified (partial); Owner blocked for remaining cases | Real Test Mode success, declined payment, signed webhook acceptance, quote consumption, atomic finalization, Dodo tax-inclusive amount handling, and hosted stale/wrong-amount refunds are verified on the stable beta origin. Duplicate/cancelled/idempotency/retry/race/refund-failure/error cases still require the full hosted exercise. Procedure: `DEPLOY.md` §4. |
+| Dodo sandbox matrix (success/fail/cancel/duplicate/stale/simultaneous/refund-failure/missing-metadata/wrong-amount/outage) | Staging verified (partial); Owner blocked for remaining cases | Real Test Mode success, declined payment, signed webhook acceptance, duplicate-event replay/idempotency, cancelled-checkout UI behavior, quote consumption, atomic finalization, Dodo tax-inclusive amount handling, and hosted stale/wrong-amount refunds are verified on the stable beta origin. A provider `payment.cancelled` event, retry/race/refund-failure, missing-metadata, and outage cases still require the full hosted exercise. Procedure: `DEPLOY.md` §4. |
 | Live Dodo configuration | Owner blocked | DEPLOY.md §6 |
 
 ## Infrastructure
