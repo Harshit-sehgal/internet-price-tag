@@ -91,7 +91,7 @@ Start after Tracks A-C have usable hosted resources.
 4. Verify Realtime across two sessions, including a live market update. **Staging verified** on `realtime-success-us-20260911.com`; the observer updated to `@harshit`, history, and the `$10` next price without reload.
 5. Complete the real journey: search, login, handle, quote, Dodo sandbox checkout, signed webhook, finalization, history, profile, analytics, CTA, share, and share visit. **Staging verified** for the exercised success path.
 6. Verify analytics events and holder aggregation using real sandbox activity. **Staging verified** with hosted tag, profile, and share events and non-empty holder analytics.
-7. Verify security headers and direct RPC denial for anon/authenticated roles.
+7. Verify security headers and direct RPC denial for anon/authenticated roles. **Staging verified**: the Production response includes HSTS, `nosniff`, `DENY`, strict referrer, and permissions headers; direct anonymous Supabase REST calls to `finalize_takeover` and `holder_analytics` both returned HTTP 401.
 8. Verify mobile layouts at 375, 430 and 768 px and perform one real-device check where possible.
 
 ## Free-tier rule
