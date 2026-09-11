@@ -4,7 +4,7 @@
 // Quotes, takeovers and history are ALWAYS server-authoritative here.
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { quoteFor, START_PRICE_CENTS, type PriceQuote } from "./game.ts";
+import { quoteFor, type PriceQuote } from "./game.ts";
 import { requireEligibleDomain } from "./domains.ts";
 
 export type RepoDomain = {
@@ -65,6 +65,9 @@ export type TakeoverOutcome =
 
 const QUOTE_TTL_MS = 5 * 60 * 1000; // §16: ~5 minutes, configurable
 
+export const MAX_REFUND_ATTEMPTS = 3;
+const REFUND_CLAIM_LEASE_MS = 10 * 60 * 1000;
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 export const isProdDatastore = Boolean(supabaseUrl && supabaseServiceKey);
@@ -87,12 +90,39 @@ type MemState = {
   quotes: Map<string, RepoQuote>;
   profiles: Map<string, RepoProfile>;
   paymentEvents: Map<string, { id: string; provider: string; providerEventId: string; providerPaymentId: string; eventType: string; status: string; createdAt: string }>;
+  refunds: Map<string, MemRefund>;
+};
+
+export type RepoRefundStatus = "attempting" | "failed" | "succeeded" | "manual_review";
+
+type MemRefund = {
+  provider: string;
+  providerPaymentId: string;
+  providerEventId: string;
+  reason: string;
+  amountCents: number | null;
+  status: RepoRefundStatus;
+  attempts: number;
+  claimToken: string | null;
+  leaseExpiresAt: number | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
+
+export type RefundClaim = {
+  claimed: boolean;
+  status: RepoRefundStatus;
+  attempts: number;
+  claimToken: string | null;
+  lastError: string | null;
 };
 
 const g = globalThis as unknown as { __iptMem?: MemState };
 function mem(): MemState {
   if (!g.__iptMem) {
-    g.__iptMem = { domains: new Map(), sales: [], quotes: new Map(), profiles: new Map(), paymentEvents: new Map() };
+    g.__iptMem = { domains: new Map(), sales: [], quotes: new Map(), profiles: new Map(), paymentEvents: new Map(), refunds: new Map() };
   }
   return g.__iptMem;
 }
@@ -630,9 +660,13 @@ export async function finalizeTakeover(input: FinalizeInput): Promise<TakeoverOu
   if (d.version !== input.expectedVersion) return { ok: false, code: "STALE_QUOTE" };
   if (d.holderUserId && d.holderUserId === input.buyerUserId) return { ok: false, code: "ALREADY_HOLDER" };
 
-  const required = d.holderUserId == null || d.priceCents === 0
-    ? START_PRICE_CENTS
-    : d.priceCents + Math.max(500, Math.ceil(d.priceCents / 100));
+  const required = quoteFor({
+    domain: d.domain,
+    holder: d.holderHandle,
+    priceCents: d.priceCents,
+    version: d.version,
+    history: [],
+  }).nextPriceCents;
   if (input.paidCents !== required) return { ok: false, code: "WRONG_PRICE" };
 
   const sale: RepoSale = {
@@ -804,6 +838,144 @@ export async function markPaymentEventStatus(provider: string, providerEventId: 
   }
   const ev = mem().paymentEvents.get(`${provider}:${providerEventId}`);
   if (ev) ev.status = status;
+}
+
+// --------------------------------------------------------------- refund ledger
+export async function claimRefundAttempt(args: {
+  provider: string;
+  paymentId: string;
+  eventId: string;
+  reason: string;
+  amountCents: number | null;
+}): Promise<RefundClaim> {
+  if (isProdDatastore) {
+    const { data, error } = await client().rpc("claim_refund_attempt", {
+      p_provider: args.provider,
+      p_provider_payment_id: args.paymentId,
+      p_provider_event_id: args.eventId,
+      p_reason: args.reason,
+      p_amount_cents: args.amountCents,
+      p_max_attempts: MAX_REFUND_ATTEMPTS,
+      p_lease_seconds: REFUND_CLAIM_LEASE_MS / 1000,
+    });
+    if (error) throw error;
+    const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
+    if (!row) throw new Error("REFUND_CLAIM_EMPTY");
+    return {
+      claimed: Boolean(row.claimed),
+      status: String(row.status) as RepoRefundStatus,
+      attempts: Number(row.attempts),
+      claimToken: row.claim_token == null ? null : String(row.claim_token),
+      lastError: row.last_error == null ? null : String(row.last_error),
+    };
+  }
+
+  const now = Date.now();
+  const key = `${args.provider}:${args.paymentId}`;
+  const existing = mem().refunds.get(key);
+  if (!existing) {
+    const claimToken = crypto.randomUUID();
+    const timestamp = new Date(now).toISOString();
+    mem().refunds.set(key, {
+      provider: args.provider,
+      providerPaymentId: args.paymentId,
+      providerEventId: args.eventId,
+      reason: args.reason,
+      amountCents: args.amountCents,
+      status: "attempting",
+      attempts: 1,
+      claimToken,
+      leaseExpiresAt: now + REFUND_CLAIM_LEASE_MS,
+      lastError: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: null,
+    });
+    return { claimed: true, status: "attempting", attempts: 1, claimToken, lastError: null };
+  }
+
+  if (existing.status === "succeeded" || existing.status === "manual_review") {
+    return {
+      claimed: false,
+      status: existing.status,
+      attempts: existing.attempts,
+      claimToken: existing.claimToken,
+      lastError: existing.lastError,
+    };
+  }
+
+  if (existing.status === "attempting") {
+    if (existing.leaseExpiresAt != null && existing.leaseExpiresAt > now) {
+      return {
+        claimed: false,
+        status: existing.status,
+        attempts: existing.attempts,
+        claimToken: existing.claimToken,
+        lastError: existing.lastError,
+      };
+    }
+    existing.status = "manual_review";
+    existing.claimToken = null;
+    existing.leaseExpiresAt = null;
+    existing.lastError ??= "refund attempt lease expired";
+    existing.updatedAt = new Date(now).toISOString();
+    return { claimed: false, status: "manual_review", attempts: existing.attempts, claimToken: null, lastError: existing.lastError };
+  }
+
+  if (existing.attempts >= MAX_REFUND_ATTEMPTS) {
+    existing.status = "manual_review";
+    existing.claimToken = null;
+    existing.leaseExpiresAt = null;
+    existing.updatedAt = new Date(now).toISOString();
+    return { claimed: false, status: "manual_review", attempts: existing.attempts, claimToken: null, lastError: existing.lastError };
+  }
+
+  const claimToken = crypto.randomUUID();
+  existing.status = "attempting";
+  existing.attempts += 1;
+  existing.claimToken = claimToken;
+  existing.leaseExpiresAt = now + REFUND_CLAIM_LEASE_MS;
+  existing.updatedAt = new Date(now).toISOString();
+  return { claimed: true, status: "attempting", attempts: existing.attempts, claimToken, lastError: existing.lastError };
+}
+
+export async function completeRefundAttempt(args: {
+  provider: string;
+  paymentId: string;
+  claimToken: string;
+  status: Extract<RepoRefundStatus, "failed" | "succeeded" | "manual_review">;
+  error?: string;
+}): Promise<boolean> {
+  const now = new Date().toISOString();
+  if (isProdDatastore) {
+    const { data, error } = await client()
+      .from("refunds")
+      .update({
+        status: args.status,
+        claim_token: null,
+        lease_expires_at: null,
+        last_error: args.error ?? null,
+        updated_at: now,
+        completed_at: args.status === "succeeded" || args.status === "manual_review" ? now : null,
+      })
+      .eq("provider", args.provider)
+      .eq("provider_payment_id", args.paymentId)
+      .eq("claim_token", args.claimToken)
+      .select("status")
+      .maybeSingle();
+    if (error) throw error;
+    return !!data;
+  }
+
+  const refund = mem().refunds.get(`${args.provider}:${args.paymentId}`);
+  if (!refund || refund.claimToken !== args.claimToken) return false;
+  refund.status = args.status;
+  refund.claimToken = null;
+  refund.leaseExpiresAt = null;
+  refund.lastError = args.error ?? null;
+  refund.updatedAt = now;
+  refund.completedAt = args.status === "succeeded" || args.status === "manual_review" ? now : null;
+  return true;
 }
 
 export async function isReservedInDb(domain: string): Promise<boolean> {

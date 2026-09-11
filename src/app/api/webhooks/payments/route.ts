@@ -181,6 +181,18 @@ export async function POST(req: Request) {
       // money in a non-deterministic state → 500 so the provider retries and
       // the next delivery re-attempts finalize + refund.
       if (!result.refunded) {
+        if (result.manualReview) {
+          // The refund ledger has exhausted safe automatic attempts (or lost
+          // certainty after a provider/database ambiguity). Acknowledge the
+          // webhook so it cannot loop forever; the durable ledger is now an
+          // operator queue for reconciliation.
+          try {
+            await markPaymentEventStatus(provider.name, event.id, "ignored", result.reason ?? "refund_manual_review");
+          } catch {
+            return Response.json({ error: "store_failed", retryable: true }, { status: 500 });
+          }
+          return Response.json({ received: true, result, retryable: false });
+        }
         try {
           await markPaymentEventStatus(provider.name, event.id, "error", result.reason);
         } catch {

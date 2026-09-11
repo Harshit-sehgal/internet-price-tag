@@ -129,7 +129,8 @@ against `https://<your-domain>/api/health` (and `?check=db` for readiness).
 
 Alert on any of these at level `error`:
 
-- `refund_failed` — money needs manual review; the payment was NOT applied.
+- `refund_failed` — an automatic refund attempt failed; retry is bounded by the refund ledger.
+- `refund_manual_review` / `refund_completion_unknown` — money needs manual reconciliation; the payment was NOT applied.
 - `takeover_finalization_error` — includes `IDEMPOTENCY_CONFLICT` (payment-id
   reuse, never auto-refunded) and other finalizer failures.
 - `webhook_store_failed` / `webhook_processing_failed` — webhook returned 500

@@ -282,7 +282,7 @@ Agents should make reasonable reversible technical decisions without asking the 
 
 ## Known cleanup that is not an integration blocker
 
-`package.json` still uses the internal package name `internet-price-tag`. If touching package metadata, rename it to `priced` and regenerate `package-lock.json` normally with npm. Do not hand-edit a large lockfile just for cosmetic cleanup.
+`package.json` is already named `priced`; keep the package metadata and lockfile aligned if dependencies are changed. Do not hand-edit a large lockfile just for cosmetic cleanup.
 
 ## Completion definition
 
