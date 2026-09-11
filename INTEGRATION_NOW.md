@@ -31,7 +31,7 @@ This file is the current authority for the next execution phase and overrides ol
 - Production liveness and Supabase readiness checks pass: `/api/health` returns `ok: true`, and `/api/health?check=db` returns `datastore: supabase` and `db: ok`.
 - A new free-tier Upstash account was checked and its designated `priced-beta-redis` database was created in N. California (`us-west-1`). The existing `promptpay-staging-redis` database in the other account was left untouched. Its REST URL and write token are configured only in Vercel Production, and a fresh Production deployment completed successfully.
 - The authenticated beta user selected and saved the permanent public handle `@harshit`. The hosted domain, profile, receipt, share URL, and owner-only analytics page render successfully; real hosted analytics now show tag views, profile views, and share visits.
-- The hosted staging smoke passes all 9 checks, and `/api/health` plus `/api/health?check=db` are healthy. A production handle-rate-limit burst returned `429 rate_limited` without 5xx responses; the complete quote/checkout/user/IP/domain matrix is still outstanding.
+- The hosted staging smoke passes all 9 checks, and `/api/health` plus `/api/health?check=db` are healthy. Production handle-rate-limit and same-domain quote bursts from the signed-in `@harshit` session returned `429 rate_limited` without 5xx responses; the complete checkout/user/IP/domain rate-limit matrix is still outstanding.
 - A separate hosted observer session received the live Realtime market update after the post-fix takeover: it changed to `CURRENT HOLDER @harshit`, showed the permanent history entry, and displayed the `$10` next takeover price without a reload. This is **Staging verified** for the live two-session Realtime path.
 - Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
 
@@ -74,7 +74,7 @@ Do not create paid infrastructure without explicit owner approval.
 
 1. Create one free Upstash Redis database for the designated beta environment. **Implemented** (`priced-beta-redis`, Free Tier, `us-west-1`).
 2. Configure the REST URL/token only in that environment. **Implemented** in Vercel Production; the token is stored as a Secret and the URL as a Config variable.
-3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances. **Staging verified** for the authenticated handle burst and Redis connectivity; the full quote/checkout/user/IP/domain matrix remains outstanding.
+3. Verify quote, checkout, handle, user, IP, and domain rate limits across deployed instances. **Staging verified (partial)** for Redis connectivity, the authenticated handle burst, and a same-domain quote burst returning 429 without 5xx; checkout/user/IP/domain coverage remains outstanding.
 4. Use free logs and free uptime checks initially. Vercel Hobby currently has no available Log Drain destination (`Add Drain` is disabled), so external log-drain wiring is **External provider blocked**; the hosted health endpoints remain available for an external uptime check.
 5. Check `/api/health` and `/api/health?check=db`.
 6. Watch structured critical events during sandbox testing.
