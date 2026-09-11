@@ -29,7 +29,7 @@ Nothing is marked beyond the level actually evidenced.
 | Item | Status | Evidence |
 |---|---|---|
 | Integer-cent pricing, locked formula ($5 start, max($5, 1%)) | CI verified | `src/lib/game.test.ts` |
-| Version-checked, row-locked atomic `finalize_takeover` RPC | CI verified (dockerized Postgres); Owner blocked for hosted verification | `tests/pg/finalize-rpc.test.ts`: 25-racer races → exactly one winner, losers STALE_QUOTE; real Supabase run requires authenticated database access |
+| Version-checked, row-locked atomic `finalize_takeover` RPC | Staging verified (database-level); Owner blocked for REST/service-role harness | Hosted authenticated-CLI database races produced exactly one winner and `STALE_QUOTE` losers at 10 and 25 requests; the REST harness remains gated by the protected service-role key. Dockerized `tests/pg/finalize-rpc.test.ts` remains CI-green. |
 | Immutable sales history (append-only) | CI verified | RPC inserts only; `db/ops.sql` documents correction procedure |
 | In-memory mirror correctness (demo) | CI verified | `tests/integration/concurrency.test.ts` |
 | Idempotent webhook handling (event + payment id), stale-quote refunds | CI verified | `tests/integration/webhook-safety.test.ts`, `dodo.test.ts` |
@@ -98,7 +98,7 @@ Nothing is marked beyond the level actually evidenced.
 ## Owner gates remaining (in order — exact actions in DEPLOY.md)
 
 1. **Supabase/Auth** (§1): the hosted logical schema/data dump and isolated PostgreSQL 17 restore are complete; Google OAuth, callback, welcome, logout/re-login, `@harshit` handle creation, the live two-session Realtime update, and database-level hosted RPC concurrency are complete. The REST/service-role RPC harness remains outstanding.
-2. **Upstash** (§3/A4): verify distributed quote, checkout, handle, user, IP, and domain rate limits against the Redis-enabled Production deployment. Credential wiring, the handle burst, and a same-domain quote burst are complete; checkout/user/IP/domain coverage remains.
+2. **Upstash** (§3/A4): verify distributed quote, checkout, handle, user, IP, and domain rate limits against the Redis-enabled Production deployment. Credential wiring, the handle burst, same-domain quote burst, and a 21-domain checkout burst yielding 20 sessions plus 1 `429 rate_limited` are complete; the full quote/checkout/user/IP/domain matrix remains.
 3. **Sandbox gate** (§4/B1): complete the remaining Dodo Test Mode matrix, run `npm run test:postgres` against real Supabase when the protected service-role key can be supplied securely, exercise the 10/25 races through the hosted HTTP/payment path, and retain the passing `npm run smoke:staging` result. Database-level hosted RPC concurrency is already Staging verified.
 4. **Monitoring** (§8/A8): add an authorized external uptime check and decide how to handle alerting/log drains; Vercel Hobby currently has `Add Drain`, `Add Rule`, and `Add Webhook` disabled, so monitoring wiring is **External provider blocked** without a plan change or external service.
 5. **Backup/recovery**: the documented logical dump and isolated restore procedure is Staging verified. Supabase Free Plan has no managed project backups; do not enable PITR during the free beta phase. Revisit managed backups and environment isolation before real-money production.
