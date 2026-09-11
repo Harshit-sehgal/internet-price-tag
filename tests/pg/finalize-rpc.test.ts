@@ -48,6 +48,8 @@ async function runMigrations(client) {
   // Supabase-compat preamble: plain Postgres lacks the service_role role,
   // the auth schema and the realtime publication the migrations reference.
   await client.query("create role service_role nologin");
+  await client.query("create role anon nologin");
+  await client.query("create role authenticated nologin");
   await client.query("create schema if not exists auth");
   await client.query("create table if not exists auth.users (id uuid primary key, email text, created_at timestamptz default now())");
   // auth.uid() stub for the quotes owner-read RLS policy.
@@ -61,6 +63,7 @@ async function runMigrations(client) {
     "20260910000001_priced_profiles.sql",
     "20260910000002_credit_ledger.sql",
     "20260910000003_holder_analytics_rpc.sql",
+    "20260911000001_refund_ledger.sql",
   ]) {
     const sql = await readFile(new URL(`../../supabase/migrations/${file}`, import.meta.url), "utf8");
     await client.query(sql);
@@ -205,6 +208,47 @@ test("reserved domain is rejected inside the transaction", { skip: !hasDocker },
   });
   assert.ok(!out.ok);
   assert.equal(out.code, "RESERVED_DOMAIN");
+});
+
+test("refund claim RPC serializes attempts and reaches manual review", { skip: !hasDocker }, async () => {
+  const provider = "dodo";
+  const paymentId = `pi-refund-rpc-${randomUUID()}`;
+  const claimArgs = [provider, paymentId, "evt-refund-rpc-1", "stale_quote", 500, 3, 600];
+  const results = await Promise.all(
+    Array.from({ length: 8 }, () => client.query(
+      "select * from public.claim_refund_attempt($1,$2,$3,$4,$5,$6,$7)",
+      claimArgs,
+    )),
+  );
+  const claimed = results.filter((result) => result.rows[0]?.claimed);
+  assert.equal(claimed.length, 1, `only one concurrent refund worker may claim the attempt: ${JSON.stringify(results.map((result) => result.rows[0]))}`);
+  assert.equal(claimed[0].rows[0].attempts, 1);
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await client.query(
+      `update public.refunds
+       set status = 'failed', claim_token = null, lease_expires_at = null,
+           last_error = $1, updated_at = now()
+       where provider = $2 and provider_payment_id = $3`,
+      [`wallet failure ${attempt}`, provider, paymentId],
+    );
+    if (attempt < 3) {
+      const retry = await client.query(
+        "select * from public.claim_refund_attempt($1,$2,$3,$4,$5,$6,$7)",
+        [provider, paymentId, `evt-refund-rpc-${attempt + 1}`, "stale_quote", 500, 3, 600],
+      );
+      assert.equal(retry.rows[0].claimed, true);
+      assert.equal(retry.rows[0].attempts, attempt + 1);
+    }
+  }
+
+  const terminal = await client.query(
+    "select * from public.claim_refund_attempt($1,$2,$3,$4,$5,$6,$7)",
+    [provider, paymentId, "evt-refund-rpc-4", "stale_quote", 500, 3, 600],
+  );
+  assert.equal(terminal.rows[0].claimed, false);
+  assert.equal(terminal.rows[0].status, "manual_review");
+  assert.equal(terminal.rows[0].attempts, 3);
 });
 
 test("25 concurrent first claims: exactly one winner, 24 clean losers (real row locks)", { skip: !hasDocker }, async () => {

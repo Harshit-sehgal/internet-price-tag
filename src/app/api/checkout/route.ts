@@ -126,7 +126,7 @@ export async function POST(req: Request) {
       detail: (e instanceof Error ? e.message : String(e)).slice(0, 500),
     });
     return NextResponse.json(
-      { error: "checkout_failed", detail: e instanceof Error ? e.message : String(e) },
+      { error: "checkout_failed" },
       { status: 502 },
     );
   }

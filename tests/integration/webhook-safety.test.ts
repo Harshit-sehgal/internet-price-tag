@@ -18,6 +18,8 @@ import {
   finalizeTakeover,
   getDomain,
   listSalesForDomain,
+  claimRefundAttempt,
+  completeRefundAttempt,
 } from "../../src/lib/repo.ts";
 import { processSucceededPayment } from "../../src/lib/takeover.ts";
 import { isUniqueViolation } from "../../src/lib/db-errors.ts";
@@ -75,6 +77,96 @@ test("payment event errors remain retryable while terminal statuses stay observa
 
   await markPaymentEventStatus("demo", "evt-retry-1", "processed");
   assert.equal((await getPaymentEvent("demo", "evt-retry-1"))?.status, "processed");
+});
+
+test("refund ledger bounds automatic attempts and parks the payment for review", async () => {
+  const first = await claimRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-1",
+    eventId: "evt-refund-ledger-1",
+    reason: "stale_quote",
+    amountCents: 500,
+  });
+  assert.equal(first.claimed, true);
+  assert.equal(first.attempts, 1);
+  assert.ok(first.claimToken);
+  assert.equal(await completeRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-1",
+    claimToken: first.claimToken!,
+    status: "failed",
+    error: "wallet empty",
+  }), true);
+
+  const second = await claimRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-1",
+    eventId: "evt-refund-ledger-2",
+    reason: "stale_quote",
+    amountCents: 500,
+  });
+  assert.equal(second.claimed, true);
+  assert.equal(second.attempts, 2);
+  await completeRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-1",
+    claimToken: second.claimToken!,
+    status: "failed",
+    error: "wallet still empty",
+  });
+
+  const third = await claimRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-1",
+    eventId: "evt-refund-ledger-3",
+    reason: "stale_quote",
+    amountCents: 500,
+  });
+  assert.equal(third.claimed, true);
+  assert.equal(third.attempts, 3);
+  await completeRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-1",
+    claimToken: third.claimToken!,
+    status: "manual_review",
+    error: "wallet still empty",
+  });
+
+  const terminal = await claimRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-1",
+    eventId: "evt-refund-ledger-4",
+    reason: "stale_quote",
+    amountCents: 500,
+  });
+  assert.equal(terminal.claimed, false);
+  assert.equal(terminal.status, "manual_review");
+  assert.equal(terminal.attempts, 3);
+});
+
+test("successful refund ledger entries cannot be claimed twice", async () => {
+  const first = await claimRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-success",
+    eventId: "evt-refund-ledger-success-1",
+    reason: "amount_mismatch",
+    amountCents: 600,
+  });
+  assert.equal(await completeRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-success",
+    claimToken: first.claimToken!,
+    status: "succeeded",
+  }), true);
+  const replay = await claimRefundAttempt({
+    provider: "demo",
+    paymentId: "pi-refund-ledger-success",
+    eventId: "evt-refund-ledger-success-2",
+    reason: "amount_mismatch",
+    amountCents: 600,
+  });
+  assert.equal(replay.claimed, false);
+  assert.equal(replay.status, "succeeded");
 });
 
 test("one quote reuses one checkout session (first-writer-wins)", async () => {

@@ -32,7 +32,7 @@ Nothing is marked beyond the level actually evidenced.
 | Version-checked, row-locked atomic `finalize_takeover` RPC | Staging verified | Hosted authenticated-CLI database races produced exactly one winner and `STALE_QUOTE` losers at 10 and 25 requests; the real Supabase REST/service-role harness passed all 8 tests, including race, stale-version, idempotency, wrong-amount, self-takeover, and reserved-domain cases. Dockerized `tests/pg/finalize-rpc.test.ts` remains CI-green. |
 | Immutable sales history (append-only) | CI verified | RPC inserts only; `db/ops.sql` documents correction procedure |
 | In-memory mirror correctness (demo) | CI verified | `tests/integration/concurrency.test.ts` |
-| Idempotent webhook handling (event + payment id), stale-quote refunds | CI verified | `tests/integration/webhook-safety.test.ts`, `dodo.test.ts` |
+| Idempotent webhook handling (event + payment id), durable stale-quote refunds | CI verified | `tests/integration/webhook-safety.test.ts`, `dodo.test.ts`; refund ledger caps automatic attempts and parks uncertain failures for manual review |
 
 ## Payments (Dodo primary, Stripe adapter retained)
 

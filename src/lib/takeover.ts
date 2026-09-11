@@ -1,15 +1,32 @@
 // Takeover orchestration: the single trusted path from payment to holder change.
 // Server-only. Combines quotes, payments and the atomic database finalizer.
 import "server-only";
-import { getQuote, finalizeTakeover, getProfileById, markQuoteStatus, markPaymentEventStatus, type RepoQuote, type TakeoverOutcome } from "./repo.ts";
+import {
+  getQuote,
+  finalizeTakeover,
+  getProfileById,
+  markQuoteStatus,
+  claimRefundAttempt,
+  completeRefundAttempt,
+  MAX_REFUND_ATTEMPTS,
+  type RepoQuote,
+  type TakeoverOutcome,
+} from "./repo.ts";
 import { logEvent } from "./logger.ts";
 
 export type WebhookProcessingResult = {
   outcome: "processed" | "ignored" | "duplicate" | "failed";
   saleId?: string;
   refunded?: boolean;
+  manualReview?: boolean;
   reason?: string;
 };
+
+type RefundOutcome = { refunded: boolean; manualReview?: boolean };
+
+function failedAfterRefund(reason: string, refund: RefundOutcome): WebhookProcessingResult {
+  return { outcome: "failed", ...refund, reason };
+}
 
 export async function processSucceededPayment(args: {
   provider: string;
@@ -20,15 +37,19 @@ export async function processSucceededPayment(args: {
 }): Promise<WebhookProcessingResult> {
   if (!args.quoteId) {
     logEvent("webhook_payment_missing_quote", "warn", { provider: args.provider, event_id: args.eventId, payment_id: args.paymentId });
-    const refunded = await refundWithoutQuote(args.provider, args.eventId, args.paymentId, "missing_quote_metadata");
-    return { outcome: "failed", refunded, reason: "missing_quote_metadata" };
+    return failedAfterRefund(
+      "missing_quote_metadata",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, null, "missing_quote_metadata"),
+    );
   }
 
   const quote = await getQuote(args.quoteId);
   if (!quote) {
     logEvent("webhook_payment_unknown_quote", "warn", { provider: args.provider, event_id: args.eventId, payment_id: args.paymentId, quote_id: args.quoteId });
-    const refunded = await refundWithoutQuote(args.provider, args.eventId, args.paymentId, "unknown_quote");
-    return { outcome: "failed", refunded, reason: "unknown_quote" };
+    return failedAfterRefund(
+      "unknown_quote",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, null, "unknown_quote"),
+    );
   }
   // Terminal quote states must never create a sale — cover the webhook race
   // where Stripe retries arrive after we already marked the quote.
@@ -45,8 +66,8 @@ export async function processSucceededPayment(args: {
         quote_id: quote.id,
         quote_status: quote.status,
       });
-      const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, `quote_${quote.status}`);
-      return { outcome: "failed", refunded, reason: `quote_${quote.status}` };
+      const reason = `quote_${quote.status}`;
+      return failedAfterRefund(reason, await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, reason));
     }
     logEvent("webhook_payment_terminal_quote", "warn", {
       provider: args.provider,
@@ -54,16 +75,18 @@ export async function processSucceededPayment(args: {
       quote_id: quote.id,
       quote_status: quote.status,
     });
-    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, `quote_${quote.status}`);
-    return { outcome: "failed", refunded, reason: `quote_${quote.status}` };
+    const reason = `quote_${quote.status}`;
+    return failedAfterRefund(reason, await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, reason));
   }
   // Only non-consumed quotes expire — consumed quotes already produced a sale
   // and must not be refunded on TTL expiry (that would refund a valid sale).
   if (quote.status !== "consumed" && new Date(quote.expiresAt).getTime() < Date.now()) {
     await markQuoteStatus(quote.id, "expired");
     logEvent("webhook_payment_expired_quote", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
-    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "quote_expired");
-    return { outcome: "failed", refunded, reason: "quote_expired" };
+    return failedAfterRefund(
+      "quote_expired",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "quote_expired"),
+    );
   }
 
   // Do not short-circuit on consumed: a duplicate webhook for the same
@@ -74,20 +97,26 @@ export async function processSucceededPayment(args: {
   const profile = await getProfileById(quote.buyerUserId);
   if (!profile) {
     logEvent("takeover_failed_buyer_profile_missing", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
-    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "buyer_profile_missing");
-    return { outcome: "failed", refunded, reason: "buyer_profile_missing" };
+    return failedAfterRefund(
+      "buyer_profile_missing",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "buyer_profile_missing"),
+    );
   }
   if (profile.suspendedAt) {
     logEvent("takeover_blocked_buyer_suspended", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
-    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "buyer_suspended");
-    return { outcome: "failed", refunded, reason: "buyer_suspended" };
+    return failedAfterRefund(
+      "buyer_suspended",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "buyer_suspended"),
+    );
   }
 
   if (args.paidCents != null && args.paidCents !== quote.nextPriceCents) {
     // Never apply a payment toward a different price (§50).
     logEvent("payment_amount_mismatch", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, paid_cents: args.paidCents, expected_cents: quote.nextPriceCents });
-    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "amount_mismatch");
-    return { outcome: "failed", refunded, reason: "amount_mismatch" };
+    return failedAfterRefund(
+      "amount_mismatch",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "amount_mismatch"),
+    );
   }
 
   const outcome: TakeoverOutcome = await finalizeTakeover({
@@ -119,24 +148,32 @@ export async function processSucceededPayment(args: {
   if (outcome.code === "STALE_QUOTE") {
     await markQuoteStatus(quote.id, "stale");
     logEvent("payment_succeeded_takeover_stale", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, domain: quote.domain });
-    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "stale_quote");
-    return { outcome: "failed", refunded, reason: "stale_quote" };
+    return failedAfterRefund(
+      "stale_quote",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "stale_quote"),
+    );
   }
   if (outcome.code === "WRONG_PRICE") {
     logEvent("payment_wrong_price", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
-    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "wrong_price");
-    return { outcome: "failed", refunded, reason: "wrong_price" };
+    return failedAfterRefund(
+      "wrong_price",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "wrong_price"),
+    );
   }
   if (outcome.code === "ALREADY_HOLDER") {
     logEvent("payment_already_holder", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
-    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "already_holder");
-    return { outcome: "failed", refunded, reason: "already_holder" };
+    return failedAfterRefund(
+      "already_holder",
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "already_holder"),
+    );
   }
   if (outcome.code === "FINALIZE_ERROR") {
     // RESERVED_DOMAIN surfaces as FINALIZE_ERROR via repo.ts; refund the stale payment.
     logEvent("takeover_finalization_error", "error", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, code: outcome.code, domain: quote.domain });
-    const refunded = await refundWithLog(args.provider, args.eventId, args.paymentId, quote, "finalize_error");
-    return { outcome: "failed", refunded, reason: outcome.code };
+    return failedAfterRefund(
+      outcome.code,
+      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "finalize_error"),
+    );
   }
   // IDEMPOTENCY_CONFLICT: critical alert condition (§56) — mismatched reuse
   // of a payment id. Do NOT refund: the payment already funded its original
@@ -146,52 +183,102 @@ export async function processSucceededPayment(args: {
   return { outcome: "failed", refunded: false, reason: outcome.code };
 }
 
-async function refundWithLog(
+async function refundPaymentWithLedger(
   provider: string,
   eventId: string,
   paymentId: string,
-  quote: RepoQuote,
+  quote: RepoQuote | null,
   reason: string,
-): Promise<boolean> {
-  try {
-    const { getPaymentProvider } = await import("./payments.ts");
-    const providerImpl = getPaymentProvider();
-    const res = await providerImpl.refundPayment(paymentId, reason);
-    if (!res.ok) {
-      // Refund failed on a payment we will never apply: critical (§56).
-      logEvent("refund_failed", "error", { provider, payment_id: paymentId, quote_id: quote.id, reason, detail: res.error });
-      await markPaymentEventStatus(provider, eventId, "error", `refund_failed: ${res.error}`);
-      return false;
-    }
-    logEvent("stale_payment_refunded", "info", { provider, payment_id: paymentId, quote_id: quote.id, reason });
-    return true;
-  } catch (e) {
-    logEvent("refund_failed", "error", { provider, payment_id: paymentId, quote_id: quote.id, reason, detail: e instanceof Error ? e.message : String(e) });
-    await markPaymentEventStatus(provider, eventId, "error", "refund_failed: provider_error");
-    return false;
-  }
-}
+): Promise<RefundOutcome> {
+  const claim = await claimRefundAttempt({
+    provider,
+    paymentId,
+    eventId,
+    reason,
+    amountCents: quote?.nextPriceCents ?? null,
+  });
 
-async function refundWithoutQuote(
-  provider: string,
-  eventId: string,
-  paymentId: string,
-  reason: string,
-): Promise<boolean> {
+  if (claim.status === "succeeded") return { refunded: true };
+  if (claim.status === "manual_review") {
+    logEvent("refund_manual_review", "error", {
+      provider,
+      payment_id: paymentId,
+      quote_id: quote?.id ?? null,
+      reason,
+      attempts: claim.attempts,
+      detail: claim.lastError,
+    });
+    return { refunded: false, manualReview: true };
+  }
+  if (!claim.claimed || !claim.claimToken) {
+    logEvent("refund_attempt_in_progress", "warn", {
+      provider,
+      payment_id: paymentId,
+      quote_id: quote?.id ?? null,
+      reason,
+      attempts: claim.attempts,
+    });
+    return { refunded: false };
+  }
+
   try {
     const { getPaymentProvider } = await import("./payments.ts");
     const providerImpl = getPaymentProvider();
     const res = await providerImpl.refundPayment(paymentId, reason);
     if (!res.ok) {
-      logEvent("refund_failed", "error", { provider, payment_id: paymentId, reason, detail: res.error });
-      await markPaymentEventStatus(provider, eventId, "error", `refund_failed: ${res.error}`);
-      return false;
+      const terminal = claim.attempts >= MAX_REFUND_ATTEMPTS;
+      const completed = await completeRefundAttempt({
+        provider,
+        paymentId,
+        claimToken: claim.claimToken,
+        status: terminal ? "manual_review" : "failed",
+        error: res.error,
+      });
+      logEvent(terminal ? "refund_manual_review" : "refund_failed", "error", {
+        provider,
+        payment_id: paymentId,
+        quote_id: quote?.id ?? null,
+        reason,
+        attempts: claim.attempts,
+        detail: res.error,
+      });
+      return terminal || !completed ? { refunded: false, manualReview: true } : { refunded: false };
     }
-    logEvent("stale_payment_refunded", "info", { provider, payment_id: paymentId, reason, quote_id: null });
-    return true;
+    const completed = await completeRefundAttempt({
+      provider,
+      paymentId,
+      claimToken: claim.claimToken,
+      status: "succeeded",
+    });
+    if (!completed) {
+      logEvent("refund_completion_unknown", "error", { provider, payment_id: paymentId, quote_id: quote?.id ?? null, reason });
+      return { refunded: false, manualReview: true };
+    }
+    logEvent("stale_payment_refunded", "info", { provider, payment_id: paymentId, quote_id: quote?.id ?? null, reason });
+    return { refunded: true };
   } catch (e) {
-    logEvent("refund_failed", "error", { provider, payment_id: paymentId, reason, detail: e instanceof Error ? e.message : String(e) });
-    await markPaymentEventStatus(provider, eventId, "error", "refund_failed: provider_error");
-    return false;
+    const detail = e instanceof Error ? e.message : String(e);
+    const terminal = claim.attempts >= MAX_REFUND_ATTEMPTS;
+    try {
+      const completed = await completeRefundAttempt({
+        provider,
+        paymentId,
+        claimToken: claim.claimToken,
+        status: terminal ? "manual_review" : "failed",
+        error: "provider_error",
+      });
+      if (!completed) return { refunded: false, manualReview: true };
+    } catch {
+      return { refunded: false, manualReview: true };
+    }
+    logEvent(terminal ? "refund_manual_review" : "refund_failed", "error", {
+      provider,
+      payment_id: paymentId,
+      quote_id: quote?.id ?? null,
+      reason,
+      attempts: claim.attempts,
+      detail,
+    });
+    return terminal ? { refunded: false, manualReview: true } : { refunded: false };
   }
 }
