@@ -6,10 +6,10 @@
 //   RUN_POSTGRES_TESTS=1 NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run test:postgres
 //
 // Each test uses a unique domain (pgtest-<ts>-*.com) so parallel runs never
-// collide and no cleanup is required. The suite proves row locking, version
-// checks, first-claim races, duplicate payment ids, wrong amounts, stale
-// versions, self-takeovers and reserved-domain rollback against the REAL
-// PL/pgSQL function, not the in-memory mirror.
+// collide. The suite removes its disposable domains and sales after the run;
+// it proves row locking, version checks, first-claim races, duplicate payment
+// ids, wrong amounts, stale versions, self-takeovers and reserved-domain
+// rollback against the REAL PL/pgSQL function, not the in-memory mirror.
 
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
@@ -31,7 +31,23 @@ function skipReason(): string {
 }
 
 function uniq(prefix: string): string {
-  return `pgtest-${Date.now().toString(36)}-${prefix}-${Math.random().toString(36).slice(2, 6)}.com`;
+  const domain = `pgtest-${Date.now().toString(36)}-${prefix}-${Math.random().toString(36).slice(2, 6)}.com`;
+  testDomains.add(domain);
+  return domain;
+}
+
+const testDomains = new Set<string>();
+
+async function cleanupTestData(): Promise<void> {
+  if (!enabled || testDomains.size === 0) return;
+  const client = await sb();
+  const domains = [...testDomains];
+  const errors: string[] = [];
+  for (const table of ["quotes", "reserved_domains", "sales", "domains"]) {
+    const { error } = await client.from(table).delete().in("domain", domains);
+    if (error) errors.push(`${table}: ${error.message}`);
+  }
+  if (errors.length > 0) throw new Error(`postgres harness cleanup failed: ${errors.join("; ")}`);
 }
 
 function uuid(): string {
@@ -66,6 +82,10 @@ function codeOf(err: { message: string } | null): string {
 }
 
 describe("postgres finalize_takeover (real DB)", () => {
+  test.after(async () => {
+    await cleanupTestData();
+  });
+
   test.beforeEach(() => {
     if (!enabled) return;
     // no per-test setup; each test uses a fresh domain/payment id.
