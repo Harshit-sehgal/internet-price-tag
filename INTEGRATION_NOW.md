@@ -37,6 +37,13 @@ This file is the current authority for the next execution phase and overrides ol
 - Hosted database-level concurrency is **Staging verified** using a fresh authenticated Supabase CLI database login and a bounded PostgreSQL client pool on 2026-09-11: 10 simultaneous first claims produced exactly 1 `OK` and 9 `STALE_QUOTE` results; 25 simultaneous takeovers of a held domain produced exactly 1 `OK` and 24 `STALE_QUOTE` results, with final states `version=1/price=500/sales=1` and `version=2/price=1000/sales=2`. Both disposable test domains were removed after verification. The REST/service-role harness is now also **Staging verified**: `RUN_POSTGRES_TESTS=1 npm run test:postgres` ran against the real project with the protected key held transiently in memory and all 8 tests passed; the key was never printed or stored.
 - Local typecheck, lint, full tests, production build, and the real-Postgres concurrency harness are green. These results do not count as staging verification.
 
+## Recorded execution evidence (2026-09-12)
+
+- PR #53 (`8b86ae3`, “Harden payment and data safety paths”) is merged to `main` with required GitHub CI green. The production deployment `dpl_Eyt2sKn9gd9zsyZQ199C3ptizNs1` is Ready and serves the stable alias `https://internet-price-tag.vercel.app`.
+- The four hosted hardening migrations from PR #53 were applied to the existing Priced Supabase project: finalize idempotency recheck, analytics retention, payment disputes, and profiles column privacy. A hosted security query confirmed the dispute table and retention index exist; `service_role` can execute the privileged functions while `anon` cannot; `service_role` can read disputes while `anon` cannot; and `anon` can read public profile fields but not `suspended_at`.
+- The stable-origin smoke suite passes all 9 checks after the deployment. Dodo’s signed Test Mode webhook Testing control sent a `payment.failed` example to the live endpoint, and Vercel recorded HTTP 200 on the current production deployment.
+- The Dodo Test Mode webhook endpoint now subscribes to all 10 required events: `payment.succeeded`, `payment.failed`, `payment.cancelled`, and `dispute.opened`, `dispute.challenged`, `dispute.accepted`, `dispute.cancelled`, `dispute.expired`, `dispute.won`, and `dispute.lost`.
+
 ## Do not redo
 
 Do not recreate Supabase.

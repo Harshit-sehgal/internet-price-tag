@@ -20,7 +20,7 @@ Priced Credits remain disabled.
 2. Create or reuse the approved Single Payment product with Pay What You Want enabled and a minimum price of $5.
 3. Set the Dodo test API key, product id, mode, and webhook signing key in the designated staging environment only.
 4. Configure the signed webhook endpoint at `https://<stable-staging-origin>/api/webhooks/payments`.
-5. Subscribe to the payment event types used by the implementation and verify them against the current Dodo documentation.
+5. Subscribe to `payment.succeeded`, `payment.failed`, `payment.cancelled`, and all supported `dispute.*` lifecycle events used by the implementation; verify the names and payload fields against the current Dodo documentation.
 6. Run real signed Test Mode transactions. Do not substitute unsigned mocks for the final webhook verification.
 7. Verify successful payment, failed payment, cancellation, duplicate webhook, stale quote, wrong amount, simultaneous challengers, automatic stale-payment refund, refund failure, webhook retry, missing metadata, and provider outage behavior.
 8. Confirm exactly one takeover finalizes for a valid paid quote and that losing or stale payments never change ownership.

@@ -36,7 +36,9 @@ because they need accounts, credentials and a legal review.
    - `DODO_PAYMENTS_MODE=test` (preview) / `live` (production)
    - Webhook secret: add an endpoint `https://<your-domain>/api/webhooks/payments`
      subscribed to `payment.succeeded`, `payment.failed`, `payment.cancelled`,
-     then copy `DODO_PAYMENTS_WEBHOOK_KEY`.
+     and the Dodo `dispute.*` lifecycle events (`opened`, `challenged`,
+     `accepted`, `cancelled`, `expired`, `won`, `lost`), then copy
+     `DODO_PAYMENTS_WEBHOOK_KEY`.
 4. Use test credentials first; run the §76 sandbox gate (below) before switching live.
 5. Stripe remains only as an optional adapter (`STRIPE_*` keys) for experiments —
    when both are set, Dodo wins.
