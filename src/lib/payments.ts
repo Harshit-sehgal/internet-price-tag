@@ -426,6 +426,7 @@ function verifyDodoWebhookSync(
         metadata?: unknown;
         total_amount?: unknown;
         amount?: unknown;
+        tax?: unknown;
       };
     };
     const type = typeof body.type === "string" ? body.type : "";
@@ -460,10 +461,18 @@ function verifyDodoWebhookSync(
         : typeof data.amount === "number"
           ? data.amount
           : null;
-    // The provider-reported total is authoritative for amount validation.
-    // Metadata is only a fallback for event variants that omit the total;
-    // trusting echoed metadata first would hide a wrong-amount payment.
-    const amountCents = totalCents ?? (Number.isFinite(metaCents) && metaCents > 0 ? metaCents : null);
+    // Dodo's total_amount includes provider-collected tax. The market price is
+    // the signed product amount before tax, so validate total minus Dodo's
+    // signed tax amount. Metadata remains only a fallback for event variants
+    // that omit the provider amount; trusting echoed metadata first would hide
+    // a wrong-amount payment.
+    const taxCents = typeof data.tax === "number" && Number.isFinite(data.tax) && data.tax >= 0 ? data.tax : null;
+    const amountCents =
+      totalCents == null
+        ? (Number.isFinite(metaCents) && metaCents > 0 ? metaCents : null)
+        : taxCents == null
+          ? totalCents
+          : totalCents - taxCents;
 
     return {
       ok: true,

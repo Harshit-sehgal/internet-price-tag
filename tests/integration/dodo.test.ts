@@ -221,3 +221,31 @@ test("dodo webhook trusts the provider total over echoed quote metadata", () => 
     restoreEnv(snap);
   }
 });
+
+test("dodo webhook excludes provider tax from the market amount", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const secret = process.env.DODO_PAYMENTS_WEBHOOK_KEY!;
+    const provider = new DodoPaymentsProvider();
+    const raw = JSON.stringify({
+      business_id: "biz_test",
+      type: "payment.succeeded",
+      timestamp: new Date().toISOString(),
+      data: {
+        payload_type: "Payment",
+        payment_id: "pay_test_taxed",
+        total_amount: 590,
+        tax: 90,
+        metadata: { quote_id: "44444444-4444-4444-8444-444444444444", amount_cents: "500" },
+      },
+    });
+    const id = "wh_taxed_amount";
+    const ts = String(Math.floor(Date.now() / 1000));
+    const res = provider.verifyWebhook(raw, signDodo(id, ts, raw, secret), { webhookId: id, webhookTimestamp: ts });
+    assert.ok(res.ok);
+    if (res.ok) assert.equal(res.event.amountCents, 500);
+  } finally {
+    restoreEnv(snap);
+  }
+});
