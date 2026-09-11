@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { getPaymentEvent, isProdDatastore, recordPaymentEvent, markPaymentEventStatus } from "@/lib/repo";
-import { getConfiguredProviderName, getPaymentProvider } from "@/lib/payments";
+import { expectedSettlementCurrency, getConfiguredProviderName, getPaymentProvider, recordPaymentDispute } from "@/lib/payments";
 import { processSucceededPayment } from "@/lib/takeover";
 import { logEvent } from "@/lib/logger";
 import { isUniqueViolation } from "@/lib/db-errors";
@@ -19,6 +19,12 @@ export const dynamic = "force-dynamic";
  *   MUST retry the delivery.
  * Only a unique-constraint violation on payment_events is treated as a
  * duplicate; every other DB error returns 500.
+ *
+ * DEPLOY: the Dodo endpoint must be subscribed to `payment.succeeded`,
+ * `payment.failed`, `payment.cancelled` AND the `dispute.*` events. Without the
+ * dispute filter, chargebacks never reach this handler at all and a buyer can
+ * keep both the tag and the money. The Stripe adapter needs `charge.dispute.*`
+ * for the same reason.
  */
 export async function POST(req: Request) {
   // A real provider must never be allowed to finalize against the in-memory
@@ -110,7 +116,86 @@ export async function POST(req: Request) {
     }
   }
 
+  // Disputes / chargebacks: record and alert, never auto-reverse.
+  // Reversing a takeover is an owner business decision that has not been made,
+  // so this path deliberately does not touch domains, sales or refunds.
+  if (event.status === "disputed") {
+    logEvent("payment_disputed", "error", {
+      provider: provider.name,
+      event_id: event.id,
+      event_type: event.type,
+      payment_id: event.paymentId,
+      dispute_id: event.dispute?.disputeId ?? null,
+      dispute_stage: event.dispute?.stage ?? null,
+      dispute_status: event.dispute?.status ?? null,
+      amount_cents: event.dispute?.amountCents ?? null,
+      currency: event.dispute?.currency ?? null,
+    });
+    const recorded = await recordPaymentDispute({
+      provider: provider.name,
+      providerEventId: event.id,
+      providerPaymentId: event.paymentId,
+      providerDisputeId: event.dispute?.disputeId ?? null,
+      eventType: event.type,
+      stage: event.dispute?.stage ?? null,
+      status: event.dispute?.status ?? null,
+      amountCents: event.dispute?.amountCents ?? null,
+      currency: event.dispute?.currency ?? null,
+    });
+    if (!recorded.ok) {
+      // A lost dispute row means a chargeback with no trace. Treat it as a
+      // transient store failure so the provider redelivers (the ledger upserts
+      // on the event id, so the retry converges).
+      logEvent("webhook_dispute_store_failed", "error", {
+        provider: provider.name,
+        event_id: event.id,
+        payment_id: event.paymentId,
+        detail: recorded.error,
+      });
+      return Response.json({ error: "dispute_store_failed", retryable: true }, { status: 500 });
+    }
+    try {
+      await markPaymentEventStatus(provider.name, event.id, "ignored", event.type);
+    } catch {
+      return Response.json({ error: "store_failed", retryable: true }, { status: 500 });
+    }
+    return Response.json({ received: true, disputed: true, eventType: event.type });
+  }
+
   if (event.status === "succeeded") {
+    // Settlement currency is part of the amount: minor units of another
+    // currency are not comparable to a quote priced in ours. The verifier has
+    // already replaced the amount with a sentinel that cannot match any quote,
+    // so this lands in takeover.ts's amount-mismatch branch → refunded →
+    // terminal 200. It is NOT retryable: redelivering would never change the
+    // currency of a settled payment.
+    if (event.amountRejection) {
+      logEvent("payment_currency_rejected", "error", {
+        provider: provider.name,
+        event_id: event.id,
+        payment_id: event.paymentId,
+        quote_id: event.quoteId,
+        reason: event.amountRejection,
+        currency: event.currency,
+        expected_currency: expectedSettlementCurrency(),
+      });
+    } else if (event.taxAssumedZero) {
+      // The provider sent a tax-inclusive total with no `tax` field. We compared
+      // it as zero-tax (see dodoAmountFromPayload for why that is fail-safe).
+      // Surfaced so an operator can tell a jurisdiction-dependent refund apart
+      // from a genuine wrong-amount payment: if this is followed by
+      // `payment_amount_mismatch`, the payment was almost certainly taxed in a
+      // geography the integration has not been exercised against.
+      logEvent("payment_tax_field_missing", "warn", {
+        provider: provider.name,
+        event_id: event.id,
+        payment_id: event.paymentId,
+        quote_id: event.quoteId,
+        assumed_tax_cents: 0,
+        amount_cents: event.amountCents,
+      });
+    }
+
     let result: Awaited<ReturnType<typeof processSucceededPayment>>;
     try {
       result = await processSucceededPayment({
@@ -229,6 +314,7 @@ export async function POST(req: Request) {
   }
 
   // failed / refunded / other events: recorded for observability, no action.
+  // (disputed is handled above — it is never silently ignored.)
   try {
     await markPaymentEventStatus(provider.name, event.id, "ignored", event.type);
   } catch {

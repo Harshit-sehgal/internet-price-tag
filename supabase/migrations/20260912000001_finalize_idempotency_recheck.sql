@@ -1,43 +1,34 @@
--- Priced — production market core (Postgres / Supabase)
--- Prices are integer cents. Auth/profile/payment-provider wiring is intentionally separate.
+-- Migration 20260912_000001 — close the finalize_takeover idempotency race.
+--
+-- BUG (reproduced deterministically against real postgres:16):
+-- the sales idempotency lookup ran BEFORE `select ... for update` on
+-- public.domains and was never repeated after the lock was acquired. Under
+-- READ COMMITTED a second transaction reads `sales` while the winner is still
+-- uncommitted (finds nothing), then parks on the row lock. When the winner
+-- commits, the loser wakes, re-reads `domains` with the NEW version, and
+-- raises STALE_QUOTE for a payment that had, in fact, already finalized.
+--
+--   A: begin; finalize_takeover(...) -> sale af3dca68   (held open)
+--   B: begin; finalize_takeover(...) -> blocks on the row lock
+--   A: commit
+--   B: -> STALE_QUOTE            (sales rows for this payment id: 1)
+--
+-- src/lib/takeover.ts REFUNDS on STALE_QUOTE, so the buyer kept the tag AND
+-- got their money back. Reachable whenever two DISTINCT webhook event ids for
+-- ONE payment arrive concurrently: routine on the Stripe adapter, where
+-- `checkout.session.completed` and `payment_intent.succeeded` both map to
+-- "succeeded" and carry the same payment_intent; possible on Dodo via a
+-- dashboard replay racing the original delivery.
+--
+-- FIX: re-run the idempotency lookup AFTER the lock is held. At that point the
+-- winner has committed, so the duplicate delivery observes the existing sale
+-- and returns it — the same answer a sequential retry already produced.
+-- A check taken before a lock is not a check.
+--
+-- Behaviour is otherwise byte-for-byte identical to
+-- 20260908000001_market_core.sql: same signature, same error codes, same
+-- pricing (LOCKED: unclaimed $5; increment max($5, 1%) rounded up), same grants.
 
-create extension if not exists pgcrypto;
-
-create table if not exists public.domains (
-  domain text primary key,
-  holder_user_id uuid null,
-  holder_handle text null,
-  price_cents bigint not null default 0 check (price_cents >= 0),
-  version bigint not null default 0 check (version >= 0),
-  claimed_at timestamptz null,
-  updated_at timestamptz not null default now()
-);
-
-create table if not exists public.sales (
-  id uuid primary key default gen_random_uuid(),
-  domain text not null references public.domains(domain),
-  buyer_user_id uuid not null,
-  buyer_handle text not null,
-  previous_holder_user_id uuid null,
-  previous_holder_handle text null,
-  price_cents bigint not null check (price_cents >= 500),
-  previous_price_cents bigint not null check (previous_price_cents >= 0),
-  domain_version bigint not null,
-  provider_payment_id text not null unique,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists sales_domain_created_idx on public.sales(domain, created_at desc);
-create index if not exists domains_price_idx on public.domains(price_cents desc, claimed_at asc);
-
--- finalize_takeover must stay byte-identical to
--- supabase/migrations/20260912000001_finalize_idempotency_recheck.sql. The
--- idempotency lookup is deliberately run TWICE: once as a lock-free fast path,
--- and again after `select ... for update`, because a check taken before a lock
--- is not a check. Without the second lookup a concurrent duplicate delivery of
--- one payment wakes after the winner commits, sees the bumped version, and
--- raises STALE_QUOTE — which src/lib/takeover.ts answers with a refund of a
--- sale that actually succeeded.
 create or replace function public.finalize_takeover(
   p_domain text,
   p_buyer_user_id uuid,
@@ -151,13 +142,4 @@ $$;
 
 -- SECURITY DEFINER functions are executable by PUBLIC unless explicitly revoked.
 revoke all on function public.finalize_takeover(text, uuid, text, bigint, bigint, text) from public;
-
--- Hosted-Supabase hardening (20260910_000004): PostgREST reaches the database
--- as anon/authenticated, and either role inheriting execute on the money path
--- would let a browser mint takeovers. Revoking explicitly is belt-and-braces
--- over the PUBLIC revoke above, and documents the intent in the portable file.
-revoke execute on function public.finalize_takeover(text, uuid, text, bigint, bigint, text) from anon;
-revoke execute on function public.finalize_takeover(text, uuid, text, bigint, bigint, text) from authenticated;
-
--- Supabase-specific trusted server role. Replace if using another Postgres host.
 grant execute on function public.finalize_takeover(text, uuid, text, bigint, bigint, text) to service_role;

@@ -4,7 +4,7 @@ import { money, quoteFor } from "@/lib/game.ts";
 import { getSale } from "@/lib/repo";
 import { ShareButtons } from "@/components/ShareButtons";
 import { LiveRefresh } from "@/components/LiveRefresh";
-import { persistAnalyticsEvent } from "@/lib/analytics-server";
+import { persistViewEvent } from "@/lib/view-events";
 
 export const dynamic = "force-dynamic";
 
@@ -45,8 +45,11 @@ export default async function SuccessPage({ params, searchParams }: Params & { s
   if (data && searchParams) {
     const sp = await searchParams;
     if (sp.via === "share" || sp.via === "x") {
-      await persistAnalyticsEvent({
+      // Guarded like the other view writes: link unfurlers (Slack/Discord/X)
+      // hit share URLs constantly and must not count as human share visits.
+      await persistViewEvent({
         event: "share_visit",
+        resource: `sale:${saleId}`,
         domain: data.sale.domain,
         handle: data.sale.buyerHandle,
         props: { saleId, via: String(sp.via) },

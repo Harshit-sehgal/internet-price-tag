@@ -4,7 +4,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHmac } from "node:crypto";
-import { DodoPaymentsProvider, getPaymentProvider } from "../../src/lib/payments.ts";
+import {
+  DodoPaymentsProvider,
+  getPaymentProvider,
+  listMemoryDisputes,
+  recordPaymentDispute,
+  resetMemoryDisputes,
+  UNVERIFIABLE_AMOUNT_CENTS,
+} from "../../src/lib/payments.ts";
 
 const ENV_KEYS = [
   "DODO_PAYMENTS_API_KEY",
@@ -12,6 +19,7 @@ const ENV_KEYS = [
   "DODO_PAYMENTS_PRODUCT_ID",
   "DODO_PAYMENTS_WEBHOOK_KEY",
   "DODO_PAYMENTS_BASE_URL",
+  "DODO_PAYMENTS_CURRENCY",
   "STRIPE_SECRET_KEY",
 ] as const;
 
@@ -35,6 +43,26 @@ function useDodoEnv(): void {
   process.env.DODO_PAYMENTS_PRODUCT_ID = "pdt_test_123";
   process.env.DODO_PAYMENTS_WEBHOOK_KEY = "test-webhook-secret-0123456789";
   delete process.env.DODO_PAYMENTS_BASE_URL;
+  delete process.env.DODO_PAYMENTS_CURRENCY;
+}
+
+/** Sign + verify a Dodo payload with the current test env. */
+function verify(raw: string, id: string, opts: { timestamp?: string } = {}) {
+  const secret = process.env.DODO_PAYMENTS_WEBHOOK_KEY!;
+  const ts = opts.timestamp ?? String(Math.floor(Date.now() / 1000));
+  return new DodoPaymentsProvider().verifyWebhook(raw, signDodo(id, ts, raw, secret), {
+    webhookId: id,
+    webhookTimestamp: ts,
+  });
+}
+
+function dodoPayment(data: Record<string, unknown>, type = "payment.succeeded"): string {
+  return JSON.stringify({
+    business_id: "biz_test",
+    type,
+    timestamp: new Date().toISOString(),
+    data: { payload_type: "Payment", ...data },
+  });
 }
 
 function signDodo(webhookId: string, timestamp: string, raw: string, secret: string): string {
@@ -89,6 +117,9 @@ test("dodo webhook verifies and maps payment.succeeded", () => {
       assert.equal(res.event.quoteId, quoteId);
       assert.equal(res.event.amountCents, 94940);
       assert.equal(res.event.status, "succeeded");
+      assert.equal(res.event.currency, "USD");
+      assert.equal(res.event.amountRejection, null);
+      assert.equal(res.event.dispute, null);
     }
   } finally {
     restoreEnv(snap);
@@ -199,22 +230,14 @@ test("dodo webhook trusts the provider total over echoed quote metadata", () => 
   const snap = snapshotEnv();
   try {
     useDodoEnv();
-    const secret = process.env.DODO_PAYMENTS_WEBHOOK_KEY!;
-    const provider = new DodoPaymentsProvider();
-    const raw = JSON.stringify({
-      business_id: "biz_test",
-      type: "payment.succeeded",
-      timestamp: new Date().toISOString(),
-      data: {
-        payload_type: "Payment",
-        payment_id: "pay_test_wrong_amount",
-        total_amount: 500,
-        metadata: { quote_id: "33333333-3333-4333-8333-333333333333", amount_cents: "94940" },
-      },
+    const raw = dodoPayment({
+      payment_id: "pay_test_wrong_amount",
+      total_amount: 500,
+      tax: 0,
+      currency: "USD",
+      metadata: { quote_id: "33333333-3333-4333-8333-333333333333", amount_cents: "94940" },
     });
-    const id = "wh_wrong_amount";
-    const ts = String(Math.floor(Date.now() / 1000));
-    const res = provider.verifyWebhook(raw, signDodo(id, ts, raw, secret), { webhookId: id, webhookTimestamp: ts });
+    const res = verify(raw, "wh_wrong_amount");
     assert.ok(res.ok);
     if (res.ok) assert.equal(res.event.amountCents, 500);
   } finally {
@@ -226,25 +249,392 @@ test("dodo webhook excludes provider tax from the market amount", () => {
   const snap = snapshotEnv();
   try {
     useDodoEnv();
-    const secret = process.env.DODO_PAYMENTS_WEBHOOK_KEY!;
-    const provider = new DodoPaymentsProvider();
+    const raw = dodoPayment({
+      payment_id: "pay_test_taxed",
+      total_amount: 590,
+      tax: 90,
+      currency: "USD",
+      metadata: { quote_id: "44444444-4444-4444-8444-444444444444", amount_cents: "500" },
+    });
+    const res = verify(raw, "wh_taxed_amount");
+    assert.ok(res.ok);
+    if (res.ok) {
+      assert.equal(res.event.amountCents, 500);
+      assert.equal(res.event.taxAssumedZero, false, "a signed tax field is not an assumption");
+      assert.equal(res.event.amountRejection, null);
+    }
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+// --------------------------------------------------------------- currency (1)
+
+test("dodo webhook refuses a succeeded payment settled in another currency", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    // 42000 INR minor units for a $5.00 tag. Integers alone cannot tell these
+    // apart, so without the currency check this either refunds a valid payment
+    // or — when the integers coincide — accepts a fraction of the value.
+    const raw = dodoPayment({
+      payment_id: "pay_test_inr",
+      total_amount: 42000,
+      tax: 0,
+      currency: "INR",
+      metadata: { quote_id: "55555555-5555-4555-8555-555555555555", amount_cents: "500" },
+    });
+    const res = verify(raw, "wh_currency_mismatch");
+    assert.ok(res.ok, "signature is valid; the currency is a business rejection, not a transport failure");
+    if (res.ok) {
+      assert.equal(res.event.status, "succeeded");
+      assert.equal(res.event.currency, "INR");
+      assert.equal(res.event.amountRejection, "currency_mismatch");
+      // Never null: null means "amount not asserted" downstream and SKIPS the
+      // comparison. The sentinel is negative so it can never equal a quote.
+      assert.equal(res.event.amountCents, UNVERIFIABLE_AMOUNT_CENTS);
+      assert.ok((res.event.amountCents as number) < 0);
+    }
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("dodo webhook fails closed when a succeeded payment carries no currency", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const raw = dodoPayment({
+      payment_id: "pay_test_no_currency",
+      total_amount: 500,
+      tax: 0,
+      metadata: { quote_id: "66666666-6666-4666-8666-666666666666", amount_cents: "500" },
+    });
+    const res = verify(raw, "wh_currency_missing");
+    assert.ok(res.ok);
+    if (res.ok) {
+      assert.equal(res.event.currency, null);
+      assert.equal(res.event.amountRejection, "currency_missing");
+      assert.equal(res.event.amountCents, UNVERIFIABLE_AMOUNT_CENTS);
+    }
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("dodo webhook honours DODO_PAYMENTS_CURRENCY and normalizes case", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    process.env.DODO_PAYMENTS_CURRENCY = " eur ";
+    const raw = dodoPayment({
+      payment_id: "pay_test_eur",
+      total_amount: 500,
+      tax: 0,
+      currency: "eur",
+      metadata: { quote_id: "77777777-7777-4777-8777-777777777777", amount_cents: "500" },
+    });
+    const res = verify(raw, "wh_currency_eur");
+    assert.ok(res.ok);
+    if (res.ok) {
+      assert.equal(res.event.currency, "EUR");
+      assert.equal(res.event.amountRejection, null);
+      assert.equal(res.event.amountCents, 500);
+    }
+
+    // USD is now the foreign currency.
+    const usd = dodoPayment({
+      payment_id: "pay_test_usd_when_eur",
+      total_amount: 500,
+      tax: 0,
+      currency: "USD",
+      metadata: { quote_id: "77777777-7777-4777-8777-777777777777", amount_cents: "500" },
+    });
+    const usdRes = verify(usd, "wh_currency_usd_when_eur");
+    assert.ok(usdRes.ok);
+    if (usdRes.ok) assert.equal(usdRes.event.amountRejection, "currency_mismatch");
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("currency is not validated on non-succeeded events (no money moved)", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const raw = dodoPayment({ payment_id: "pay_test_failed_nocur", metadata: {} }, "payment.failed");
+    const res = verify(raw, "wh_failed_nocur");
+    assert.ok(res.ok);
+    if (res.ok) {
+      assert.equal(res.event.status, "failed");
+      assert.equal(res.event.amountRejection, null);
+    }
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+// ------------------------------------------------------------- missing tax (2)
+
+test("dodo webhook flags a missing tax field instead of silently guessing", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    // Zero-tax jurisdiction: total IS the pre-tax market price. Treating the
+    // missing tax as zero accepts it correctly.
+    const untaxed = dodoPayment({
+      payment_id: "pay_test_untaxed",
+      total_amount: 500,
+      currency: "USD",
+      metadata: { quote_id: "88888888-8888-4888-8888-888888888888", amount_cents: "500" },
+    });
+    const res = verify(untaxed, "wh_tax_missing_untaxed");
+    assert.ok(res.ok);
+    if (res.ok) {
+      assert.equal(res.event.amountCents, 500, "a genuinely untaxed payment must still be payable");
+      assert.equal(res.event.taxAssumedZero, true, "the assumption must be visible, not silent");
+    }
+
+    // Taxed jurisdiction that omitted `tax`: the tax-inclusive total cannot
+    // equal the pre-tax quote, so this can only over-reject (refund), never
+    // under-collect. taxAssumedZero is what tells an operator why.
+    const taxedButOmitted = dodoPayment({
+      payment_id: "pay_test_tax_hidden",
+      total_amount: 590,
+      currency: "USD",
+      metadata: { quote_id: "88888888-8888-4888-8888-888888888888", amount_cents: "500" },
+    });
+    const hidden = verify(taxedButOmitted, "wh_tax_missing_taxed");
+    assert.ok(hidden.ok);
+    if (hidden.ok) {
+      assert.equal(hidden.event.amountCents, 590);
+      assert.notEqual(hidden.event.amountCents, 500, "must not silently pass as the pre-tax price");
+      assert.equal(hidden.event.taxAssumedZero, true);
+    }
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("a tax field of zero is a signed fact, not an assumption", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const raw = dodoPayment({
+      payment_id: "pay_test_zero_tax",
+      total_amount: 500,
+      tax: 0,
+      currency: "USD",
+      metadata: { quote_id: "99999999-9999-4999-8999-999999999999", amount_cents: "500" },
+    });
+    const res = verify(raw, "wh_tax_zero");
+    assert.ok(res.ok);
+    if (res.ok) {
+      assert.equal(res.event.amountCents, 500);
+      assert.equal(res.event.taxAssumedZero, false);
+    }
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("a missing tax on a non-succeeded event is not flagged", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const raw = dodoPayment({ payment_id: "pay_test_cancel", total_amount: 500, currency: "USD", metadata: {} }, "payment.cancelled");
+    const res = verify(raw, "wh_cancel_no_tax");
+    assert.ok(res.ok);
+    if (res.ok) assert.equal(res.event.taxAssumedZero, false);
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+// ---------------------------------------------------------------- disputes (3)
+
+test("dodo dispute events map to the disputed status with their dispute detail", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
     const raw = JSON.stringify({
       business_id: "biz_test",
-      type: "payment.succeeded",
+      type: "dispute.opened",
       timestamp: new Date().toISOString(),
       data: {
-        payload_type: "Payment",
-        payment_id: "pay_test_taxed",
-        total_amount: 590,
-        tax: 90,
-        metadata: { quote_id: "44444444-4444-4444-8444-444444444444", amount_cents: "500" },
+        payload_type: "Dispute",
+        dispute_id: "dis_test_001",
+        payment_id: "pay_test_disputed",
+        dispute_stage: "dispute",
+        dispute_status: "dispute_opened",
+        amount: 500,
+        currency: "USD",
       },
     });
-    const id = "wh_taxed_amount";
-    const ts = String(Math.floor(Date.now() / 1000));
-    const res = provider.verifyWebhook(raw, signDodo(id, ts, raw, secret), { webhookId: id, webhookTimestamp: ts });
+    const res = verify(raw, "wh_dispute_opened");
     assert.ok(res.ok);
-    if (res.ok) assert.equal(res.event.amountCents, 500);
+    if (res.ok) {
+      assert.equal(res.event.status, "disputed");
+      assert.equal(res.event.type, "dispute.opened");
+      assert.equal(res.event.paymentId, "pay_test_disputed");
+      assert.deepEqual(res.event.dispute, {
+        disputeId: "dis_test_001",
+        stage: "dispute",
+        status: "dispute_opened",
+        amountCents: 500,
+        currency: "USD",
+      });
+      // A dispute must never be mistaken for a payment outcome.
+      assert.notEqual(res.event.status, "succeeded");
+      assert.notEqual(res.event.status, "failed");
+    }
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("every dodo dispute lifecycle event maps to disputed, not failed or other", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const types = [
+      "dispute.opened",
+      "dispute.challenged",
+      "dispute.accepted",
+      "dispute.cancelled",
+      "dispute.expired",
+      "dispute.won",
+      "dispute.lost",
+    ];
+    for (const type of types) {
+      const raw = JSON.stringify({
+        business_id: "biz_test",
+        type,
+        timestamp: new Date().toISOString(),
+        data: { payload_type: "Dispute", dispute_id: `dis_${type}`, payment_id: "pay_lifecycle", currency: "USD" },
+      });
+      const res = verify(raw, `wh_${type}`);
+      assert.ok(res.ok, `${type} must verify`);
+      if (res.ok) {
+        assert.equal(res.event.status, "disputed", `${type} must map to disputed`);
+        assert.equal(res.event.dispute?.disputeId, `dis_${type}`);
+        assert.equal(res.event.dispute?.status, type, "status falls back to the event type");
+      }
+    }
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("non-dispute events carry no dispute record", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const { raw } = succeededPayload();
+    const res = verify(raw, "wh_no_dispute");
+    assert.ok(res.ok);
+    if (res.ok) assert.equal(res.event.dispute, null);
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("dispute ledger records one row per delivery and converges on retry", async () => {
+  resetMemoryDisputes();
+  try {
+    const record = {
+      provider: "dodo",
+      providerEventId: "wh_dispute_ledger_1",
+      providerPaymentId: "pay_test_disputed",
+      providerDisputeId: "dis_test_001",
+      eventType: "dispute.opened",
+      stage: "dispute",
+      status: "dispute_opened",
+      amountCents: 500,
+      currency: "USD",
+    };
+    assert.deepEqual(await recordPaymentDispute(record), { ok: true });
+    // A provider retry of the same delivery must converge, not duplicate.
+    assert.deepEqual(await recordPaymentDispute({ ...record, status: "dispute_challenged" }), { ok: true });
+    const rows = listMemoryDisputes().filter((r) => r.providerEventId === "wh_dispute_ledger_1");
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, "dispute_challenged");
+    assert.equal(rows[0].providerPaymentId, "pay_test_disputed");
+
+    // A later lifecycle event is its own row, queryable against the payment.
+    await recordPaymentDispute({ ...record, providerEventId: "wh_dispute_ledger_2", eventType: "dispute.lost", status: "dispute_lost" });
+    const byPayment = listMemoryDisputes().filter((r) => r.providerPaymentId === "pay_test_disputed");
+    assert.equal(byPayment.length, 2);
+  } finally {
+    resetMemoryDisputes();
+  }
+});
+
+// ------------------------------------------------------- malformed input (5)
+
+test("malformed signatures and headers are rejected without throwing", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const { raw } = succeededPayload();
+    const provider = new DodoPaymentsProvider();
+    const ts = String(Math.floor(Date.now() / 1000));
+    const headers = { webhookId: "wh_malformed", webhookTimestamp: ts };
+    const malformed = [
+      "",
+      ",",
+      "v1,",
+      "v1=",
+      "   ",
+      "v1,!!!not-base64!!!",
+      "v1," + "A".repeat(10_000),
+      "v1,short",
+      "v0,abc v1,def",
+      "  ",
+      "v1,\u{1F600}",
+    ];
+    for (const sig of malformed) {
+      const res = provider.verifyWebhook(raw, sig, headers);
+      assert.equal(res.ok, false, `signature ${JSON.stringify(sig)} must not verify`);
+    }
+
+    // Non-numeric / absurd timestamps must reject, never throw.
+    for (const bad of ["not-a-number", "1e400", "-1e400", "NaN"]) {
+      const res = provider.verifyWebhook(raw, "v1,AAAA", { webhookId: "wh_x", webhookTimestamp: bad });
+      assert.equal(res.ok, false);
+    }
+
+    // A valid signature over a non-JSON body is an invalid payload, not a crash.
+    const secret = process.env.DODO_PAYMENTS_WEBHOOK_KEY!;
+    const notJson = "<html>nope</html>";
+    const bad = provider.verifyWebhook(notJson, signDodo("wh_nj", ts, notJson, secret), {
+      webhookId: "wh_nj",
+      webhookTimestamp: ts,
+    });
+    assert.deepEqual(bad, { ok: false, reason: "invalid_payload" });
+
+    // Valid signature, JSON without a type.
+    const noType = JSON.stringify({ data: {} });
+    const typeless = provider.verifyWebhook(noType, signDodo("wh_nt", ts, noType, secret), {
+      webhookId: "wh_nt",
+      webhookTimestamp: ts,
+    });
+    assert.deepEqual(typeless, { ok: false, reason: "missing_event_type" });
+  } finally {
+    restoreEnv(snap);
+  }
+});
+
+test("an empty expected digest never verifies (no zero-length buffer match)", () => {
+  const snap = snapshotEnv();
+  try {
+    useDodoEnv();
+    const { raw } = succeededPayload();
+    const ts = String(Math.floor(Date.now() / 1000));
+    // "v1=" strips to an empty candidate, which must not compare equal to
+    // anything even though two empty buffers are byte-identical.
+    const res = new DodoPaymentsProvider().verifyWebhook(raw, "v1=", { webhookId: "wh_empty", webhookTimestamp: ts });
+    assert.deepEqual(res, { ok: false, reason: "malformed_signature" });
   } finally {
     restoreEnv(snap);
   }

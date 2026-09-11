@@ -7,6 +7,19 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const alt = "Priced";
 
+// [domain] is unbounded, so every random value used to be a distinct CDN cache
+// key that always missed, and each miss cost a Supabase read plus a CPU-heavy
+// Satori/resvg render. ISR-cache the rendered PNG for an hour: crawlers and
+// repeat unfurls then cost nothing, and a takeover still refreshes the card
+// well inside the window social platforms keep their own copy.
+//
+// Deliberately no request-scoped rate limit here: reading headers()/cookies()
+// would opt this route into dynamic rendering and disable exactly the cache
+// that makes the abuse cheap to absorb. Caching is the stronger control.
+export const revalidate = 3600;
+
+const CACHE_CONTROL = "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400";
+
 const appHost = process.env.NEXT_PUBLIC_APP_URL
   ? new URL(process.env.NEXT_PUBLIC_APP_URL).host
   : "priced.game";
@@ -56,6 +69,6 @@ export default async function OgImage({ params }: { params: Promise<{ domain: st
         </div>
       </div>
     ),
-    size,
+    { ...size, headers: { "cache-control": CACHE_CONTROL } },
   );
 }

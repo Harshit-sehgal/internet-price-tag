@@ -32,8 +32,20 @@ export default async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Skip the webhook (no user session needed) and the cheap demo pulse;
-    // keep all other routes session-aware.
-    "/((?!_next/static|_next/image|favicon.ico|api/webhooks|api/market/pulse|api/demo).*)",
+    // Every matched request pays a supabase.auth.getUser() network round-trip,
+    // so routes that can never act on a user session are excluded: the signed
+    // webhook, the demo pulse/demo routes, the health probes (hit every 15
+    // minutes by the uptime workflow), the crawler-only sitemap/robots files,
+    // and both generated Open Graph images — the OG routes are unauthenticated
+    // by definition and are the most crawler-heavy paths on the site.
+    // Exclusions that name ONE route are anchored with `$`; unanchored they
+    // are prefixes, so a bare `api/health` would also silently exclude a
+    // future `/api/health/deep` and leave it with no session. `api/webhooks`,
+    // `api/demo` and `api/market/pulse` stay unanchored on purpose — those are
+    // whole subtrees that can never act on a user session.
+    // `.*/opengraph-image$` is likewise anchored so a domain page whose slug
+    // merely contains "opengraph-image" stays session-aware.
+    // Everything else, including every session-bearing route, stays matched.
+    "/((?!_next/static|_next/image|favicon\\.ico$|api/webhooks|api/market/pulse|api/demo|api/health$|sitemap\\.xml$|robots\\.txt$|.*/opengraph-image$).*)",
   ],
 };

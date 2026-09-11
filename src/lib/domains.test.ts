@@ -54,3 +54,33 @@ test("handle validation and banned impersonation names", () => {
   assert.equal(isHandleAllowed("Staff"), false);
   assert.equal(isHandleAllowed("harshit"), true);
 });
+
+// Handles are PERMANENT, so an impersonating one can never be cleaned up
+// later. An exact-match ban list is trivially bypassed by leetspeak and
+// separators, and it misses the impersonation that actually reaches users:
+// a brand-prefixed "support" handle messaging a holder about their payment.
+test("banned handles survive leetspeak and separator evasion", () => {
+  for (const handle of [
+    "supp0rt",
+    "adm1n",
+    "r00t",
+    "0fficial",
+    "s_u_p_p_o_r_t",
+    "st4ff",
+    "pr1ced",
+  ]) {
+    assert.equal(isHandleAllowed(handle), false, handle);
+  }
+});
+
+test("brand-impersonating handles are refused as substrings", () => {
+  for (const handle of ["priced_support", "pricedteam", "pricedhelp", "teampriced", "price_tag"]) {
+    assert.equal(isHandleAllowed(handle), false, handle);
+  }
+});
+
+test("ban list does not swallow legitimate handles", () => {
+  for (const handle of ["modern", "modest", "supportive_x", "helper", "pricey", "harshit", "indexfund"]) {
+    assert.equal(isHandleAllowed(handle), true, handle);
+  }
+});

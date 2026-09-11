@@ -88,6 +88,69 @@ create index if not exists refunds_status_updated_idx
 create index if not exists refunds_payment_idx
   on public.refunds(provider, provider_payment_id);
 
+-- ============ PAYMENT DISPUTES (20260912_000003) ============
+-- Chargeback ledger. Records and alerts; it deliberately does NOT reverse a
+-- takeover — unwinding a holder change is an owner business decision, and an
+-- automatic reversal driven by a provider webhook would be an irreversible
+-- money/provenance action taken without authorization. Inert until the webhook
+-- endpoint is re-filtered to include the provider's dispute.* events.
+create table if not exists public.payment_disputes (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null,
+  -- The webhook delivery that produced this row. Unique so a provider retry of
+  -- the same event converges (upsert) instead of appending duplicates, which
+  -- keeps the webhook handler's retry contract idempotent.
+  provider_event_id text not null,
+  -- The disputed payment. This is the join key back to payment_events and
+  -- sales.provider_payment_id, which is what makes a chargeback queryable
+  -- against the takeover it funded.
+  provider_payment_id text not null,
+  provider_dispute_id text,
+  event_type text not null,
+  -- Provider-reported lifecycle fields, stored verbatim as text: the
+  -- dispute_stage/dispute_status vocabulary is provider-owned and may grow, so
+  -- a check constraint here would reject new states and turn an alertable
+  -- chargeback into a failed webhook delivery.
+  stage text,
+  status text,
+  -- Integer minor units, matching the rest of the money model. Nullable because
+  -- dispute payloads do not always carry a comparable amount; this column is
+  -- for reconciliation only and never funds or reverses anything.
+  amount_cents bigint,
+  currency text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (provider, provider_event_id)
+);
+
+-- Operator queries: "every dispute against this payment" and "open disputes,
+-- newest first".
+create index if not exists payment_disputes_payment_idx
+  on public.payment_disputes(provider, provider_payment_id, created_at desc);
+create index if not exists payment_disputes_status_idx
+  on public.payment_disputes(status, created_at desc);
+create index if not exists payment_disputes_dispute_idx
+  on public.payment_disputes(provider, provider_dispute_id);
+
+-- RLS: service_role only, matching analytics_events and refunds. RLS on with no
+-- policy blocks anon and authenticated — dispute records are money-sensitive
+-- operator data and must never be readable by a buyer or by browser code.
+alter table public.payment_disputes enable row level security;
+-- Intentionally no policies.
+
+do $$
+begin
+  -- Only on Postgres where the Supabase roles exist; harmless otherwise.
+  begin
+    revoke all on table public.payment_disputes from anon, authenticated;
+  exception when undefined_object then null;
+  end;
+  begin
+    grant select, insert, update on table public.payment_disputes to service_role;
+  exception when undefined_object then null;
+  end;
+end $$;
+
 -- ============ RESERVED DOMAINS ============
 -- Operator-managed blocklist (db/ops.sql or SQL editor; no code path required).
 create table if not exists public.reserved_domains (
@@ -96,6 +159,108 @@ create table if not exists public.reserved_domains (
   created_by text,
   created_at timestamptz not null default now()
 );
+
+-- ============ ANALYTICS EVENTS (20260909_000001) ============
+-- Persistent funnel sink: search → domain_opened → takeover_clicked →
+-- quote_created → checkout_started → payment_succeeded/takeover_succeeded →
+-- share_clicked/copied → share_visit. Properties live in jsonb so a new
+-- dimension never needs DDL. Must be created before holder_analytics and the
+-- retention pruner below, both of which read this table.
+create table if not exists public.analytics_events (
+  id uuid primary key default gen_random_uuid(),
+  event text not null,
+  user_id uuid null,
+  session_id text null,
+  handle text null,
+  domain text null,
+  props jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+-- Funnel queries: event + time + domain/session.
+create index if not exists analytics_events_event_created_idx on public.analytics_events(event, created_at desc);
+create index if not exists analytics_events_domain_idx on public.analytics_events(domain, created_at desc);
+create index if not exists analytics_events_session_idx on public.analytics_events(session_id, created_at desc);
+create index if not exists analytics_events_user_idx on public.analytics_events(user_id, created_at desc);
+
+-- Write-only observability. RLS on with NO policy blocks anon and
+-- authenticated for both reads and writes, which is exactly what we want:
+-- inserts arrive through the service role from /api/analytics, dashboards
+-- query with a service-role connection.
+alter table public.analytics_events enable row level security;
+-- Intentionally no policies — only the service role can read/write.
+
+do $$
+begin
+  -- Only on Postgres where the Supabase roles exist; harmless otherwise.
+  begin
+    grant insert, select on public.analytics_events to service_role;
+  exception when undefined_object then null;
+  end;
+end $$;
+
+-- ============ ANALYTICS RETENTION (20260912_000002) ============
+-- analytics_events is unbounded by nature and carries five indexes, so without
+-- retention it is a storage-exhaustion path on the Supabase Free plan's 500 MB.
+-- Rate limits bound the write RATE; this bounds the TOTAL. No scheduler is
+-- installed (pg_cron is an owner decision), so nothing runs until someone calls
+-- it — see the scheduling notes in the canonical migration. The money ledger is
+-- public.sales and is never touched here.
+create or replace function public.prune_analytics_events(
+  retain_interval interval default interval '180 days',
+  max_rows integer default 50000
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  deleted_count integer := 0;
+begin
+  -- Bounded delete: a single unbounded DELETE on a large table can hold locks
+  -- and bloat WAL far longer than a Supabase Free instance is happy with, so
+  -- each call removes at most max_rows and is safe to run repeatedly until it
+  -- returns 0.
+  with doomed as (
+    select id
+    from public.analytics_events
+    where created_at < now() - retain_interval
+    order by created_at
+    limit max_rows
+  )
+  delete from public.analytics_events e
+  using doomed d
+  where e.id = d.id;
+
+  get diagnostics deleted_count = row_count;
+  return deleted_count;
+end;
+$$;
+
+comment on function public.prune_analytics_events(interval, integer) is
+  'Deletes analytics_events rows older than retain_interval, at most max_rows per call. Returns the number of rows deleted. Service-role only; safe to call repeatedly until it returns 0.';
+
+-- Least privilege: the pruner deletes rows, so it must never be reachable by
+-- anon/authenticated. Mirrors finalize_takeover/holder_analytics hardening.
+revoke all on function public.prune_analytics_events(interval, integer) from public;
+
+do $$
+begin
+  begin
+    revoke all on function public.prune_analytics_events(interval, integer) from anon, authenticated;
+  exception when undefined_object then null;
+  end;
+  begin
+    grant execute on function public.prune_analytics_events(interval, integer) to service_role;
+  exception when undefined_object then null;
+  end;
+end $$;
+
+-- Supports the retention scan itself: every funnel index above is prefixed by
+-- another column, so none of them can drive an "old rows first" delete.
+create index if not exists analytics_events_created_at_idx
+  on public.analytics_events (created_at);
 
 -- ============ ROW LEVEL SECURITY ============
 -- Public can read market state, history and profiles. Critical writes happen
@@ -205,9 +370,11 @@ create policy "public read sales" on public.sales for select using (true);
 drop policy if exists "public read profiles" on public.profiles;
 create policy "public read profiles" on public.profiles for select using (true);
 
+-- `(select auth.uid())` rather than a bare `auth.uid()`: the subquery form is
+-- evaluated once per statement instead of once per row (20260910_000004).
 drop policy if exists "owner reads own quotes" on public.quotes;
 create policy "owner reads own quotes" on public.quotes for select
-  using (auth.uid() = buyer_user_id);
+  using ((select auth.uid()) = buyer_user_id);
 
 -- profiles: read-only for clients. Writes (handles, suspension) happen only
 -- through trusted server code with the service role, which bypasses RLS.
@@ -217,6 +384,35 @@ create policy "owner reads own quotes" on public.quotes for select
 drop policy if exists "owner inserts own profile" on public.profiles;
 drop policy if exists "owner updates own profile" on public.profiles;
 
+-- profiles column privacy (20260912_000004): RLS filters ROWS, never COLUMNS,
+-- so "public read profiles ... using (true)" would let any anon-key holder
+-- enumerate `suspended_at` and publish who has been moderated. Column-level
+-- privileges are the only way to express that. Revoking the table and
+-- re-granting per column (rather than revoking one column) fails CLOSED: a
+-- column added later is not public until someone grants it here. No browser
+-- code reads profiles directly — src/lib/repo.ts uses the service role, which
+-- these grants do not affect.
+do $$
+begin
+  -- These roles exist on Supabase; on a plain Postgres host they may not.
+  begin
+    revoke select on public.profiles from anon, authenticated;
+
+    grant select (
+      id,
+      handle,
+      display_name,
+      avatar_url,
+      created_at,
+      bio,
+      cta_label,
+      cta_url
+    ) on public.profiles to anon, authenticated;
+  exception
+    when undefined_object then null;
+  end;
+end $$;
+
 -- payment_events: no client policies at all (service role only).
 -- reserved_domains: readable by service role; evaluated server-side.
 
@@ -225,8 +421,19 @@ drop policy if exists "owner updates own profile" on public.profiles;
 
 -- ============ REALTIME ============
 -- Display synchronization only; the database remains transaction authority.
-alter publication supabase_realtime add table public.domains;
-alter publication supabase_realtime add table public.sales;
+do $$
+begin
+  -- The publication may not exist on a non-Supabase host, and re-adding a table
+  -- already in it raises duplicate_object — both must stay re-runnable.
+  begin
+    alter publication supabase_realtime add table public.domains;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.sales;
+  exception when duplicate_object then null;
+  end;
+end $$;
 
 -- ============ HOLDER ANALYTICS RPC (20260910_000003) ============
 create index if not exists analytics_events_event_handle_created_idx
@@ -290,10 +497,19 @@ as $$
   );
 $$;
 revoke all on function public.holder_analytics(text, timestamptz) from public;
+-- Hosted-Supabase hardening (20260910_000004): explicit client-role revokes.
+-- This RPC exposes per-handle traffic patterns, so PostgREST's anon and
+-- authenticated roles must never be able to call it.
 do $$
 begin
-  grant execute on function public.holder_analytics(text, timestamptz) to service_role;
-exception when undefined_object then null;
+  begin
+    revoke execute on function public.holder_analytics(text, timestamptz) from anon, authenticated;
+  exception when undefined_object then null;
+  end;
+  begin
+    grant execute on function public.holder_analytics(text, timestamptz) to service_role;
+  exception when undefined_object then null;
+  end;
 end $$;
 
 -- ============ PRICED CREDITS LEDGER (INACTIVE, 20260910_000002) ============

@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
 import { isAllowedAnalyticsEvent } from "@/lib/analytics";
+import { rateLimit } from "@/lib/ratelimit";
+import {
+  ANALYTICS_IP_LIMIT,
+  ANALYTICS_SESSION_LIMIT,
+  ANALYTICS_WINDOW_MS,
+  sanitizeAnalyticsProps,
+} from "@/lib/view-events";
 
 export const dynamic = "force-dynamic";
 
@@ -7,10 +14,26 @@ export const dynamic = "force-dynamic";
 // beacons (homepage_viewed, domain_searched, share_visit, etc.). Validates
 // against the shared taxonomy in analytics.ts and best-effort persists to the
 // analytics_events table. Never throws — callers must not fail on tracking.
+//
+// Abuse posture: this endpoint is unauthenticated by design (anonymous funnel
+// measurement) and every accepted request writes a row (~2 KB with indexes) to
+// a 500 MB free-tier database, so it is rate limited on IP and on the
+// client-supplied session id. A limited request is answered, never thrown from:
+// the response carries `ok: true` with a 429 so a naive caller sees success and
+// the funnel keeps working, while honest clients/proxies still see the signal.
+// Nothing is logged per dropped request on purpose — logging a request flood
+// just converts it into a log flood.
 export async function POST(req: Request) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+
   const ct = req.headers.get("content-type") ?? "";
   if (!ct.startsWith("application/json")) {
     return NextResponse.json({ error: "unsupported_media_type" }, { status: 415 });
+  }
+
+  // IP limit before the body is read: shed load as cheaply as possible.
+  if (!(await rateLimit(`analytics:ip:${ip}`, ANALYTICS_IP_LIMIT, ANALYTICS_WINDOW_MS))) {
+    return NextResponse.json({ ok: true, dropped: "rate_limited" }, { status: 429 });
   }
 
   // 10 KiB payload limit — analytics events are small; this prevents abuse.
@@ -37,19 +60,27 @@ export async function POST(req: Request) {
     : {};
 
   const sessionId = typeof ev.session_id === "string" ? ev.session_id.slice(0, 128) : null;
-  const domain = typeof props.domain === "string" ? props.domain.slice(0, 253) : null;
-  const handle = typeof props.handle === "string" ? props.handle.slice(0, 64) : null;
-  // Never persist secrets/PII: drop any prop that looks like a token/secret/email
-  const safeProps: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(props)) {
-    const lower = k.toLowerCase();
-    if (lower.includes("secret") || lower.includes("token") || lower.includes("password") || lower.includes("email")) {
-      continue;
-    }
-    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean" || v === null) {
-      safeProps[k] = typeof v === "string" ? String(v).slice(0, 512) : v;
+
+  // Session dimension: a client-supplied id is not a trust boundary (an
+  // attacker rotates it freely), but it bounds one real tab and it stops a
+  // single session behind a shared NAT/proxy IP from consuming the IP budget.
+  if (sessionId) {
+    const okSession = await rateLimit(
+      `analytics:session:${sessionId}`,
+      ANALYTICS_SESSION_LIMIT,
+      ANALYTICS_WINDOW_MS,
+    );
+    if (!okSession) {
+      return NextResponse.json({ ok: true, dropped: "rate_limited" }, { status: 429 });
     }
   }
+
+  const domain = typeof props.domain === "string" ? props.domain.slice(0, 253) : null;
+  const handle = typeof props.handle === "string" ? props.handle.slice(0, 64) : null;
+  // Drops secret/PII-shaped keys, caps each value at 512 chars, and caps the
+  // NUMBER of keys — a 10 KiB body otherwise fits ~200 keys of jsonb per row.
+  // `domain`/`handle` are read above, so capping never loses a real column.
+  const { props: safeProps } = sanitizeAnalyticsProps(props);
 
   // Best-effort persist — never fail the request on a DB error.
   try {

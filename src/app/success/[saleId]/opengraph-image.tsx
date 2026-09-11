@@ -6,6 +6,16 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const alt = "Priced receipt";
 
+// [saleId] is unbounded and every miss costs two Supabase reads plus a
+// Satori/resvg render, so an attacker could mint infinite cache keys for free.
+// The underlying sale row is immutable; only the "next challenge" line moves,
+// which an hour-long ISR window tracks closely enough for a share card.
+// No headers()/cookies() here on purpose — a request-scoped rate limit would
+// force dynamic rendering and throw away this cache.
+export const revalidate = 3600;
+
+const CACHE_CONTROL = "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400";
+
 const appHost = process.env.NEXT_PUBLIC_APP_URL
   ? new URL(process.env.NEXT_PUBLIC_APP_URL).host
   : "priced.game";
@@ -69,6 +79,6 @@ export default async function SaleOgImage({ params }: { params: Promise<{ saleId
         </div>
       </div>
     ),
-    size,
+    { ...size, headers: { "cache-control": CACHE_CONTROL } },
   );
 }

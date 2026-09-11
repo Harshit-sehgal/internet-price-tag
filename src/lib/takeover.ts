@@ -28,6 +28,36 @@ function failedAfterRefund(reason: string, refund: RefundOutcome): WebhookProces
   return { outcome: "failed", ...refund, reason };
 }
 
+/**
+ * Grace window for a payment that lands just after its quote's 5-minute TTL.
+ *
+ * WHY THIS EXISTS: the TTL protects against a stale *price*, not against a
+ * slow payer. Real payments routinely exceed five minutes — 3-D Secure with an
+ * SMS OTP, app-switching to a banking app, a declined card followed by a retry.
+ * UPI and Indian netbanking redirects (this deployment is ap-south-1) blow past
+ * it regularly. Before this window, such a buyer was charged, auto-refunded,
+ * and never got the tag — despite nobody having outbid them. They simply paid
+ * slowly, and it cost us a refund fee and a support ticket each time.
+ *
+ * WHY IT IS SAFE: nothing here bypasses a price check. A late payment still
+ * goes through finalizeTakeover, which re-validates version AND price under
+ * the row lock. It is honoured ONLY when the market has not moved at all — in
+ * which case the buyer paid exactly the right amount for exactly the state
+ * they quoted. If anything moved, it becomes STALE_QUOTE and is refunded
+ * exactly as before.
+ *
+ * WHY IT DEFAULTS TO ZERO: `AGENTS.md` lists the 5-minute quote TTL under
+ * "Locked market mechanics" and forbids changing product rules without the
+ * owner's say-so. Default 0 therefore preserves today's behaviour byte for
+ * byte. Set QUOTE_LATE_PAYMENT_GRACE_MS (e.g. 900000 for 15 minutes) to turn
+ * it on — that is the owner's decision to make, not this module's.
+ */
+export function latePaymentGraceMs(): number {
+  const raw = Number(process.env.QUOTE_LATE_PAYMENT_GRACE_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.min(raw, 24 * 60 * 60 * 1000); // never unbounded
+}
+
 export async function processSucceededPayment(args: {
   provider: string;
   eventId: string;
@@ -81,12 +111,29 @@ export async function processSucceededPayment(args: {
   // Only non-consumed quotes expire — consumed quotes already produced a sale
   // and must not be refunded on TTL expiry (that would refund a valid sale).
   if (quote.status !== "consumed" && new Date(quote.expiresAt).getTime() < Date.now()) {
-    await markQuoteStatus(quote.id, "expired");
-    logEvent("webhook_payment_expired_quote", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id });
-    return failedAfterRefund(
-      "quote_expired",
-      await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "quote_expired"),
-    );
+    const lateBy = Date.now() - new Date(quote.expiresAt).getTime();
+    if (lateBy <= latePaymentGraceMs()) {
+      // Inside the grace window: do NOT refund yet. Fall through to
+      // finalizeTakeover, which re-validates version AND price atomically
+      // under the row lock. If the market moved, it returns STALE_QUOTE and
+      // the existing branch below refunds exactly as before. If it did not
+      // move, the buyer paid the correct price for the exact market state
+      // they quoted and simply paid slowly — honouring that is financially
+      // neutral and strictly better for them. See latePaymentGraceMs().
+      logEvent("webhook_payment_late_within_grace", "warn", {
+        provider: args.provider,
+        payment_id: args.paymentId,
+        quote_id: quote.id,
+        late_by_ms: lateBy,
+      });
+    } else {
+      await markQuoteStatus(quote.id, "expired");
+      logEvent("webhook_payment_expired_quote", "warn", { provider: args.provider, payment_id: args.paymentId, quote_id: quote.id, late_by_ms: lateBy });
+      return failedAfterRefund(
+        "quote_expired",
+        await refundPaymentWithLedger(args.provider, args.eventId, args.paymentId, quote, "quote_expired"),
+      );
+    }
   }
 
   // Do not short-circuit on consumed: a duplicate webhook for the same
