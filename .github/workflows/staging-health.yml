@@ -1,0 +1,33 @@
+name: Hosted beta health
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    name: Check hosted beta
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      STAGING_URL: https://internet-price-tag.vercel.app
+    steps:
+      - name: Check liveness
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 20 \
+            "$STAGING_URL/api/health" > /tmp/health.json
+          grep -q '"ok":true' /tmp/health.json
+
+      - name: Check Supabase readiness
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 20 \
+            "$STAGING_URL/api/health?check=db" > /tmp/health-db.json
+          grep -q '"ok":true' /tmp/health-db.json
+          grep -q '"datastore":"supabase"' /tmp/health-db.json
+          grep -q '"db":"ok"' /tmp/health-db.json

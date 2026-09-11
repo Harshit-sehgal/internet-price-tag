@@ -135,6 +135,10 @@ Uptime checks (owner, any provider):
 - `GET /api/health` every 60s → expect `200 {"ok":true}`.
 - `GET /api/health?check=db` every 300s → expect `200`; alerts on `503`
   mean the service role cannot reach Postgres.
+- `.github/workflows/staging-health.yml` runs both checks every 15 minutes
+  from GitHub Actions and can also be started with `workflow_dispatch`.
+  GitHub Actions failure notifications provide a free baseline alert path;
+  this does not replace Vercel log drains or structured-event alerting.
 
 5xx rate alerting (Vercel Log Drain or Sentry): alert when 5xx responses
 per minute exceed 5 for 5 consecutive minutes. The webhook route uses 500
