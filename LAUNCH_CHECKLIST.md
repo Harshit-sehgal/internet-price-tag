@@ -72,7 +72,7 @@ Nothing is marked beyond the level actually evidenced.
 | Suspension, self-takeover, IDN/punycode, IP/localhost rejection | CI verified | `src/lib/domains.test.ts`, `game.test.ts`, PG suite |
 | Rate limits (quote/checkout/handle/demo-sign, user+IP+domain layers) | CI verified | `tests/integration/ratelimit.test.ts` |
 | Turnstile (fail-closed when configured) | CI verified | `src/lib/turnstile.test.ts` |
-| Open-redirect guards (callback, welcome, handle) | Locally verified (code review + sanitization) | `src/app/auth/callback/route.ts:11`, `welcome/page.tsx`; no automated test (P2 candidate) |
+| Open-redirect guards (callback, welcome, handle) | CI verified | `src/lib/navigation.ts`, `tests/integration/navigation.test.ts`, `tests/integration/cta.test.ts`; external, scheme-relative, encoded-separator, and dot-segment traversal cases are covered |
 | JSON-only CSRF guards on all money/identity routes | CI verified | health-analytics tests assert 415; routes enumerated in security review |
 | Security headers (HSTS, nosniff, DENY, referrer, permissions) and direct RPC denial | Staging verified | Production header check confirms HSTS, `nosniff`, `DENY`, strict referrer, and permissions headers; anonymous Supabase REST calls to `finalize_takeover` and `holder_analytics` both returned HTTP 401. |
 | Priced Credits OFF (no read/write path, no UI) | Verified by absence | `grep credit_ledger src/` → no request path; flag unset everywhere |

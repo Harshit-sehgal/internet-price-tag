@@ -586,11 +586,11 @@ function verifyDodoWebhookSync(
     if (!type) return { ok: false, reason: "missing_event_type" };
     const data = body.data ?? {};
 
-    // DEPLOY: the Dodo endpoint is currently filtered to payment.succeeded /
-    // payment.failed / payment.cancelled. It MUST be re-filtered to also
-    // include `dispute.*` (opened, challenged, accepted, cancelled, expired,
-    // won, lost) or chargebacks never reach this handler and a buyer can keep
-    // both the tag and the money.
+    // DEPLOY: the Dodo endpoint is configured for payment.succeeded /
+    // payment.failed / payment.cancelled plus `dispute.*` (opened, challenged,
+    // accepted, cancelled, expired, won, lost). Without the dispute filter,
+    // chargebacks never reach this handler and a buyer can keep both the tag
+    // and the money.
     const isDispute = type.startsWith("dispute.");
     const status: ProviderEvent["status"] = isDispute
       ? "disputed"
