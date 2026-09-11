@@ -74,7 +74,7 @@ Nothing is marked beyond the level actually evidenced.
 | Turnstile (fail-closed when configured) | CI verified | `src/lib/turnstile.test.ts` |
 | Open-redirect guards (callback, welcome, handle) | Locally verified (code review + sanitization) | `src/app/auth/callback/route.ts:11`, `welcome/page.tsx`; no automated test (P2 candidate) |
 | JSON-only CSRF guards on all money/identity routes | CI verified | health-analytics tests assert 415; routes enumerated in security review |
-| Security headers (HSTS, nosniff, DENY, referrer, permissions) | CI verified | `next.config.mjs`; deployed-header check is staging |
+| Security headers (HSTS, nosniff, DENY, referrer, permissions) and direct RPC denial | Staging verified | Production header check confirms HSTS, `nosniff`, `DENY`, strict referrer, and permissions headers; anonymous Supabase REST calls to `finalize_takeover` and `holder_analytics` both returned HTTP 401. |
 | Priced Credits OFF (no read/write path, no UI) | Verified by absence | `grep credit_ledger src/` → no request path; flag unset everywhere |
 | Analytics privacy (PII strip, no raw webhook bodies, retention doc) | CI verified + documented | route tests; DEPLOY.md §9 retention |
 
